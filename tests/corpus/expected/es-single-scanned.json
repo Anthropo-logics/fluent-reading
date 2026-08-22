@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "document_id": "es-single-scanned",
+  "revision": 1,
+  "pages": [
+    {
+      "page_index": 0,
+      "blocks": [
+        {
+          "block_id": "es-single-scanned-block-0",
+          "order": 0,
+          "text": "LECTURA EN ESPANOL 1",
+          "region": [
+            0.1,
+            0.08,
+            0.8,
+            0.12
+          ],
+          "paragraphs": [
+            {
+              "paragraph_id": "es-single-scanned-paragraph-0",
+              "sentences": [
+                {
+                  "sentence_id": "es-single-scanned-sentence-0",
+                  "text": "LECTURA EN ESPANOL 1"
+                }
+              ]
+            }
+          ],
+          "degradation": null
+        }
+      ]
+    }
+  ],
+  "unsupported": []
+}

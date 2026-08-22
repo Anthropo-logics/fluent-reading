@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "document_id": "es-mixed",
+  "revision": 1,
+  "pages": [
+    {
+      "page_index": 0,
+      "blocks": [
+        {
+          "block_id": "es-mixed-block-0",
+          "order": 0,
+          "text": "LECTURA EN ESPANOL 1",
+          "region": [
+            0.1,
+            0.08,
+            0.8,
+            0.12
+          ],
+          "paragraphs": [
+            {
+              "paragraph_id": "es-mixed-paragraph-0",
+              "sentences": [
+                {
+                  "sentence_id": "es-mixed-sentence-0",
+                  "text": "LECTURA EN ESPANOL 1"
+                }
+              ]
+            }
+          ],
+          "degradation": null
+        },
+        {
+          "block_id": "es-mixed-block-1",
+          "order": 1,
+          "text": "LECTURA EN ESPANOL 1",
+          "region": [
+            0.1,
+            0.25,
+            0.8,
+            0.12
+          ],
+          "paragraphs": [
+            {
+              "paragraph_id": "es-mixed-paragraph-1",
+              "sentences": [
+                {
+                  "sentence_id": "es-mixed-sentence-1",
+                  "text": "LECTURA EN ESPANOL 1"
+                }
+              ]
+            }
+          ],
+          "degradation": null
+        }
+      ]
+    }
+  ],
+  "unsupported": []
+}

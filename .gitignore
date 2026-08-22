@@ -1,0 +1,85 @@
+
+
+# Environment & Secrets (AIOX)
+.env
+.env.*
+!.env.example
+.env.local
+.env.*.local
+*.key
+*.pem
+*.p12
+*.mobileprovision
+*.xcconfig.local
+
+# Dependencies (AIOX)
+node_modules/
+node_modules
+
+# Build & Logs (AIOX)
+dist/
+build/
+target/
+DerivedData/
+.build/
+.swiftpm/
+artifacts/
+!artifacts/
+artifacts/*
+!artifacts/story-1.6/
+artifacts/story-1.6/*
+!artifacts/story-1.6/technical-summary.json
+!artifacts/gate-a/
+artifacts/gate-a/*
+!artifacts/gate-a/1.8-evidence-index.json
+!artifacts/performance/
+artifacts/performance/*
+!artifacts/performance/story-2.7-real-1079-2h.json
+!artifacts/story-5.1/
+artifacts/story-5.1/*
+!artifacts/story-5.1/corpus-translations-for-owner-review.md
+!artifacts/story-5.1/corpus-translations-for-owner-review-RATED.md
+!artifacts/story-5.1/corpus-pt-es-retest-modern.md
+!artifacts/story-5.1/corpus-pt-es-retest-modern-RATED.md
+!artifacts/story-5.1/technical-summary.json
+exports/
+*.log
+logs/
+
+# IDE & OS (AIOX)
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+*.swo
+*.xcuserstate
+xcuserdata/
+*.xccheckout
+*.xcscmblueprint
+
+# Local toolchains and caches
+.cache/
+.cargo-home/
+.rustup-home/
+
+# Local/private product data
+models/local/
+models/artifacts/
+tests/corpus/local/
+tests/corpus/restricted/
+store-v1/
+*.safetensors
+*.gguf
+*.onnx
+*.ort
+*.mlmodelc/
+
+# AIOX Local (AIOX)
+.aiox-core/local/
+.aiox/project-status.yaml
+.claude/settings.local.json
+.aiox/install-log.txt
+
+# Coverage and agent runtime artifacts
+*.profraw
+.aiox/handoffs/

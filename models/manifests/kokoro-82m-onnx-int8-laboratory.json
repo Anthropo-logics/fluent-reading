@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "id": "kokoro-82m-onnx-int8-laboratory",
+  "model_revision": "a70f0e45c1cc0df9abdfbfa0f6dee9073579ee99",
+  "artifact_revision": "a70f0e45c1cc0df9abdfbfa0f6dee9073579ee99",
+  "purpose": "tts",
+  "authors": ["hexgrad", "onnx-community"],
+  "license_id": "Apache-2.0",
+  "usage_restrictions": ["commercial_review_pending", "native_arm64_runtime_unresolved", "multilingual_capability_pending_runtime_validation"],
+  "languages": ["es", "en", "pt"],
+  "voices": ["af_heart", "ef_dora", "pf_dora"],
+  "runtime_id": "unresolved-native-arm64",
+  "runtime_version": "no-compatible-pair",
+  "distribution_status": "laboratory",
+  "artifacts": [
+    {
+      "relative_path": "data/config.json",
+      "role": "model_config",
+      "source_url": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/a70f0e45c1cc0df9abdfbfa0f6dee9073579ee99/config.json",
+      "publisher": "onnx-community",
+      "format": "json",
+      "quantization": "not_applicable",
+      "size_bytes": 44,
+      "sha256_hex": "df34b4f930b23447cd4dc410fabfb42eb3f24e803e6c3f97d618fb359380a36f"
+    },
+    {
+      "relative_path": "data/tokenizer.json",
+      "role": "tokenizer",
+      "source_url": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/a70f0e45c1cc0df9abdfbfa0f6dee9073579ee99/tokenizer.json",
+      "publisher": "onnx-community",
+      "format": "json",
+      "quantization": "not_applicable",
+      "size_bytes": 3497,
+      "sha256_hex": "77a02c8e164413299b4b4c403b14f8e0e1c1b727db4d46a09d6327b861060a34"
+    },
+    {
+      "relative_path": "data/tokenizer_config.json",
+      "role": "tokenizer_config",
+      "source_url": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/a70f0e45c1cc0df9abdfbfa0f6dee9073579ee99/tokenizer_config.json",
+      "publisher": "onnx-community",
+      "format": "json",
+      "quantization": "not_applicable",
+      "size_bytes": 113,
+      "sha256_hex": "be1cb066d6ef6b074b3f15e6a6dd21ac88ff3cdaedf325f0aaed686c70f75d20"
+    },
+    {
+      "relative_path": "data/model_quantized.onnx",
+      "role": "model_weights",
+      "source_url": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/a70f0e45c1cc0df9abdfbfa0f6dee9073579ee99/onnx/model_quantized.onnx",
+      "publisher": "onnx-community",
+      "format": "onnx",
+      "quantization": "int8",
+      "size_bytes": 92361116,
+      "sha256_hex": "fbae9257e1e05ffc727e951ef9b9c98418e6d79f1c9b6b13bd59f5c9028a1478"
+    },
+    {
+      "relative_path": "data/voices/af_heart.bin",
+      "role": "voice_embedding",
+      "source_url": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/a70f0e45c1cc0df9abdfbfa0f6dee9073579ee99/voices/af_heart.bin",
+      "publisher": "onnx-community",
+      "format": "float32_binary",
+      "quantization": "not_applicable",
+      "size_bytes": 522240,
+      "sha256_hex": "d583ccff3cdca2f7fae535cb998ac07e9fcb90f09737b9a41fa2734ec44a8f0b"
+    },
+    {
+      "relative_path": "data/voices/ef_dora.bin",
+      "role": "voice_embedding",
+      "source_url": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/a70f0e45c1cc0df9abdfbfa0f6dee9073579ee99/voices/ef_dora.bin",
+      "publisher": "onnx-community",
+      "format": "float32_binary",
+      "quantization": "not_applicable",
+      "size_bytes": 522240,
+      "sha256_hex": "f66ec66bd295acb18372e37008533a9a3228483ccd294e7538d5d9294ac9a532"
+    },
+    {
+      "relative_path": "data/voices/pf_dora.bin",
+      "role": "voice_embedding",
+      "source_url": "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/a70f0e45c1cc0df9abdfbfa0f6dee9073579ee99/voices/pf_dora.bin",
+      "publisher": "onnx-community",
+      "format": "float32_binary",
+      "quantization": "not_applicable",
+      "size_bytes": 522240,
+      "sha256_hex": "3da7b5b2d91847ebf5646f57631af6ececae3c29a89cd300f06edf9aa6cfe9ee"
+    }
+  ]
+}

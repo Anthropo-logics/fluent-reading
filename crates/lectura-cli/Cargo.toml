@@ -1,0 +1,15 @@
+[package]
+name = "lectura-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+lectura-core = { path = "../lectura-core" }
+serde.workspace = true
+serde_json.workspace = true
+libc.workspace = true
+
+[[bin]]
+name = "lectura"
+path = "src/main.rs"

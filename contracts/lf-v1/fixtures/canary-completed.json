@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "request_id": "req_opaque",
+  "job_id": "job_opaque",
+  "sequence": 0,
+  "kind": "completed",
+  "progress": null,
+  "result": {
+    "core_version": "0.1.0",
+    "message": "lectura-core ready"
+  },
+  "error": null,
+  "recovery": null
+}

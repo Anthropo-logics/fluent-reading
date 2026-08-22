@@ -1,0 +1,3 @@
+vendor/** -whitespace
+tests/corpus/documents/*.pdf binary
+tests/tts/sources/*.txt binary

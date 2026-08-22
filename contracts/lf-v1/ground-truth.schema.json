@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lf-v1/ground-truth.schema.json",
+  "title": "Lectura corpus ground truth v1",
+  "type": "object",
+  "required": ["schema_version", "document_id", "revision", "pages", "unsupported"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "document_id": { "$ref": "#/$defs/id" },
+    "revision": { "type": "integer", "minimum": 1 },
+    "pages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["page_index", "blocks"],
+        "properties": {
+          "page_index": { "type": "integer", "minimum": 0 },
+          "blocks": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["block_id", "order", "text", "region", "paragraphs", "degradation"],
+              "properties": {
+                "block_id": { "$ref": "#/$defs/id" },
+                "order": { "type": "integer", "minimum": 0 },
+                "text": { "type": "string", "minLength": 1 },
+                "region": { "type": ["array", "null"], "minItems": 4, "maxItems": 4, "items": { "type": "number", "minimum": 0, "maximum": 1 } },
+                "paragraphs": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "required": ["paragraph_id", "sentences"],
+                    "properties": {
+                      "paragraph_id": { "$ref": "#/$defs/id" },
+                      "sentences": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                          "type": "object",
+                          "required": ["sentence_id", "text"],
+                          "properties": { "sentence_id": { "$ref": "#/$defs/id" }, "text": { "type": "string", "minLength": 1 } },
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "degradation": { "type": ["string", "null"] }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "unsupported": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+  },
+  "$defs": { "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_-]+$" } },
+  "additionalProperties": false
+}

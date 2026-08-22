@@ -1,0 +1,8 @@
+/* Story 6.3 AC2: the name macOS shows in the Dock, the menu bar, About and Finder, the same way
+   Preview is "Vista Previa" in Spanish. The generated Info.plist only carries one value, so the
+   per-language names have to live in an InfoPlist.strings per .lproj. */
+"CFBundleDisplayName" = "Fluent Reading";
+"CFBundleName" = "Fluent Reading";
+
+/* Story 6.4 AC1/AC5: shown by Finder's Get Info and by the standard macOS About panel. */
+"NSHumanReadableCopyright" = "© 2026 Jaili Ivinai Buelvas Diaz. Free software under GPL-3.0-or-later.";

@@ -1,0 +1,6 @@
+/* Story 6.3 AC2 — ver en.lproj/InfoPlist.strings. */
+"CFBundleDisplayName" = "Lectura Fluida";
+"CFBundleName" = "Lectura Fluida";
+
+/* Story 6.4 AC1/AC5 — ver en.lproj/InfoPlist.strings. */
+"NSHumanReadableCopyright" = "© 2026 Jaili Ivinai Buelvas Diaz. Software libre bajo GPL-3.0-or-later.";

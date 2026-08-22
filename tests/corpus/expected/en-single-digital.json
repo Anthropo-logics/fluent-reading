@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "document_id": "en-single-digital",
+  "revision": 1,
+  "pages": [
+    {
+      "page_index": 0,
+      "blocks": [
+        {
+          "block_id": "en-single-digital-block-0",
+          "order": 0,
+          "text": "READING IN ENGLISH 1",
+          "region": [
+            0.1,
+            0.08,
+            0.8,
+            0.12
+          ],
+          "paragraphs": [
+            {
+              "paragraph_id": "en-single-digital-paragraph-0",
+              "sentences": [
+                {
+                  "sentence_id": "en-single-digital-sentence-0",
+                  "text": "READING IN ENGLISH 1"
+                }
+              ]
+            }
+          ],
+          "degradation": null
+        }
+      ]
+    }
+  ],
+  "unsupported": []
+}

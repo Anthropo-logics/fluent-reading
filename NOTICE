@@ -1,0 +1,311 @@
+NOTICE — Componentes de terceros de Lectura Fluida
+Third-party notices for Lectura Fluida / Fluent Reading / Leitura Fluída
+
+Actualizado: 2026-08-22
+
+El código propio de esta aplicación es software libre bajo GPL-3.0-or-later; véase el archivo
+LICENSE. Este archivo inventaría los componentes de terceros que la aplicación empaqueta, enlaza,
+ejecuta o descarga al dispositivo del lector, con su licencia y su procedencia.
+
+Cada licencia de este archivo se leyó de su fuente primaria — el manifiesto verificado del paquete
+(`models/manifests/*.json`), el archivo LICENSE del repositorio del componente, o el campo `license`
+de su metadata de paquete — y no de memoria. La sección 8 enumera lo que queda pendiente de revisión
+jurídica o de implementación antes de cualquier distribución pública, conforme a NFR11 del PRD.
+
+
+================================================================================
+1. Modelos y datos de modelo
+================================================================================
+
+Fuente de estos datos: los manifiestos verificados de `models/manifests/`, que la aplicación valida
+por sha256 antes de instalar cualquier artefacto. El panel "Acerca de" de la aplicación muestra esta
+misma información leída en tiempo de ejecución del manifiesto real, no de esta tabla.
+
+Ningún modelo se empaqueta dentro del instalador: el dispositivo del lector los descarga bajo demanda
+desde su repositorio público de origen, a la carpeta que el propio lector elige.
+
+--------------------------------------------------------------------------------
+kokoro-82m-4bit — voz (TTS)
+  Licencia declarada .... Apache-2.0
+  Procedencia ........... hexgrad, mlx-community
+  Origen ................ https://huggingface.co/mlx-community/Kokoro-82M-4bit
+  Revisión .............. e4468a460f6f70b9125a003e0adb1ab7d4904bbd
+  Runtime ............... mlx-audio-swift v0.1.3
+  Estado del manifiesto . pending_review
+  Restricciones declaradas en el manifiesto:
+    - generated_audio_rights_review_pending
+    - g2p_packages_required
+    - runtime_pair_architecture_review_pending
+
+kokoro-ipa-lexicons-es-pt — lexicones IPA auxiliares para español y portugués
+  Licencia declarada .... NOASSERTION (la metadata de origen no declara licencia)
+  Procedencia ........... beshkenadze, gruut (Michael Hansen / rhasspy)
+  Origen ................ https://huggingface.co/beshkenadze/kokoro-ipa-lexicons
+  Revisión .............. a3d069caea9a2b63daed40834514431f73a2f11e
+  Estado del manifiesto . pending_review
+  Restricciones declaradas en el manifiesto:
+    - repository_license_metadata_missing
+    - license_review_required
+    - kokoro_runtime_auxiliary_only
+  Nota: el publicador atribuye los datos a `gruut-lang-*` y advierte que las transcripciones IPA
+  fueron generadas ejecutando eSpeak NG (GPL-3.0-or-later), y que el efecto del copyleft sobre esa
+  salida masiva es discutido. El dictamen archivado en `docs/compliance/` lo resolvió como
+  `approved_with_conditions`; la condición es la atribución de la sección 7 de este archivo.
+
+translategemma-4b-it-4bit — traducción
+  Licencia declarada .... gemma (Gemma Terms of Use, Google)
+  Procedencia ........... Google, mlx-community
+  Origen ................ https://huggingface.co/mlx-community/translategemma-4b-it-4bit
+  Revisión .............. 5788ec08c047f3f2e17808101b8d9566ac930d58
+  Runtime ............... mlx-swift-lm (gemma3)
+  Estado del manifiesto . pending_review
+  Restricciones declaradas en el manifiesto:
+    - gemma_terms_of_use_notice_file_required_on_redistribution
+    - gemma_prohibited_use_policy_applies
+    - commercial_review_pending
+--------------------------------------------------------------------------------
+
+Modelos evaluados y descartados, NUNCA distribuidos con la aplicación:
+`kokoro-kitten-tts-g2p`, `qwen3-tts-0.6b-customvoice-4bit`, `qwen3-tts-1.7b-customvoice-4bit`,
+`opus-mt-en-es`, `opus-mt-es-en`, `opus-mt-en-romance`, `opus-mt-romance-en`, `madlad400-3b-mt`,
+`kokoro-82m-onnx-int8-laboratory`. Conservan manifiesto en el repositorio como evidencia de las
+evaluaciones de las Stories 1.6 y 5.1; el proyecto de Xcode no los incluye como recurso y la
+aplicación nunca los referencia. No forman parte de lo distribuido y no requieren revisión previa al
+lanzamiento.
+
+
+================================================================================
+2. Motores ejecutables empaquetados dentro del bundle
+================================================================================
+
+Estos binarios sí viajan dentro de `LecturaFluida.app/Contents/Helpers/` (y sus datos en
+`Contents/Resources/`), instalados por `scripts/embed-runtimes.sh`.
+
+eSpeak NG 1.52.0 — fonemización (grafema → IPA) para narración en español
+  Licencia .............. GPL-3.0-or-later (archivo COPYING del propio proyecto)
+  Excepción ............. la implementación de compatibilidad `getopt.c` procede de NetBSD y es BSD
+                          de 2 cláusulas (COPYING.BSD2)
+  Procedencia ........... proyecto eSpeak NG (https://github.com/espeak-ng/espeak-ng), continuación
+                          de eSpeak, creado por Jonathan Duddington; mantenido desde 2010 por
+                          Reece H. Dunn y colaboradores
+  Archivos distribuidos . Contents/Helpers/espeak-ng, Contents/Helpers/libespeak-ng.1.dylib,
+                          Contents/Resources/espeak-ng-data/
+  Forma de uso .......... proceso independiente lanzado por CLI (`espeak-ng --ipa=3 --stdin`); la
+                          aplicación no enlaza ni incorpora sus bibliotecas en su propio binario
+  >> Obligaciones GPLv3 sobre este binario: véase la sección 8, punto 1.
+
+pcaudiolib 1.3 — biblioteca de audio portable de la que depende eSpeak NG
+  Licencia .............. GPL-3.0-or-later
+  Procedencia ........... Reece H. Dunn (https://github.com/espeak-ng/pcaudiolib)
+  Archivo distribuido ... Contents/Helpers/libpcaudio.0.dylib
+  >> Obligaciones GPLv3 sobre este binario: véase la sección 8, punto 1.
+
+mlx-audio-swift v0.1.3 — runtime de síntesis de voz
+  Licencia .............. MIT
+  Copyright ............. (c) 2025 Prince Canuma
+  Archivo distribuido ... Contents/Helpers/mlx-audio-swift-tts
+  Incorpora, dentro de su módulo MLXAudioG2P:
+    - Misaki (hexgrad) — Apache-2.0 — fonemización de inglés
+    - modelo neuronal G2P multilingüe byT5 — MIT — derivado de
+      `charsiu/g2p_multilingual_byT5_tiny_16_layers_100`, publicado como
+      `beshkenadze/g2p-multilingual-byT5-tiny-mlx`
+
+lectura-translate-runtime — runtime de traducción (código propio del proyecto)
+  Archivo distribuido ... Contents/Helpers/lectura-translate-runtime
+  Sus dependencias de terceros figuran en la sección 3.
+
+
+================================================================================
+3. Bibliotecas Swift (Swift Package Manager)
+================================================================================
+
+Licencias leídas del archivo LICENSE de cada repositorio en su copia local resuelta por SwiftPM. La
+aplicación en sí no declara dependencias SPM; las de esta sección llegan a través de los dos runtimes
+embebidos de la sección 2.
+
+Apache License 2.0
+  swift-asn1, swift-algorithms, swift-async-algorithms, swift-atomics, swift-certificates,
+  swift-collections, swift-configuration, swift-crypto, swift-distributed-tracing,
+  swift-http-structured-headers, swift-http-types, swift-log, swift-nio, swift-nio-extras,
+  swift-nio-http2, swift-nio-ssl, swift-nio-transport-services, swift-numerics,
+  swift-service-context, swift-syntax, swift-system                       (Apple / swiftlang)
+  async-http-client, swift-service-lifecycle                              (swift-server)
+  swift-huggingface, swift-jinja, swift-transformers                      (Hugging Face)
+  swift-xet                                                               (Hugging Face)
+  Actualizado 2026-08-22: el repositorio se trasladó de `mattt/swift-xet` a
+  `huggingface/swift-xet` y ahora incluye un archivo `LICENSE` (Apache License 2.0), confirmado
+  vía la API de GitHub (`gh api repos/mattt/swift-xet` redirige y `.license.spdx_id` da
+  `Apache-2.0`). El 2026-08-20 el mismo repositorio no declaraba licencia; véase la sección 8,
+  punto 4, para el estado anterior y su resolución.
+
+MIT
+  mlx-swift, mlx-swift-lm                             (c) 2023-2024 ml-explore
+  EventSource                                         (c) 2025 Mattt
+  yyjson                                              (c) 2020 YaoYuan (ibireme)
+
+
+================================================================================
+4. Bibliotecas Rust
+================================================================================
+
+El núcleo del proyecto (`lectura-core`, `lectura-ffi`) se enlaza estáticamente dentro de la
+aplicación. Licencias leídas del campo `license` de cada crate mediante `cargo metadata`. Todas son
+permisivas.
+
+MIT OR Apache-2.0
+  block-buffer, cfg-if, cpufeatures, crypto-common, digest, hybrid-array, itoa, libc, proc-macro2,
+  quote, serde, serde_core, serde_derive, serde_json, sha2, syn, typenum, unicode-normalization
+Apache-2.0 OR MIT
+  const-oid
+MIT
+  zmij
+Unlicense OR MIT
+  memchr
+Zlib OR Apache-2.0 OR MIT
+  tinyvec
+MIT OR Apache-2.0 OR Zlib
+  tinyvec_macros
+(MIT OR Apache-2.0) AND Unicode-3.0
+  unicode-ident
+
+
+================================================================================
+5. Frameworks del sistema
+================================================================================
+
+PDFKit, Vision, AVFoundation, AppKit, SwiftUI, CryptoKit, NaturalLanguage y demás frameworks del SDK
+de Apple se usan bajo el acuerdo de licencia del SDK de Apple. No se redistribuyen.
+
+
+================================================================================
+6. Comprobación de compatibilidad con la GPL-3.0-or-later del proyecto
+================================================================================
+
+El proyecto es software libre bajo GPL-3.0-or-later (véase LICENSE). Esa elección concreta —"o
+posterior" en vez de sólo la versión 3— iguala la propia cláusula de eSpeak NG y es, dentro de las
+licencias libres, es de las que pueden combinarse sin conflicto con los dos componentes copyleft que la
+aplicación empaqueta (sección 2). La tabla comprueba cada familia de licencias de las secciones 2-4
+contra la GPLv3 en vez de asumir la compatibilidad.
+
+Componente / familia de licencia          ¿Compatible con GPL-3.0-or-later?
+-----------------------------------------------------------------------------
+eSpeak NG, pcaudiolib (GPL-3.0-or-later)  Sí — es la propia licencia del proyecto.
+getopt.c (BSD-2-Clause, vía eSpeak NG)    Sí — permisiva, sin cláusulas de copyleft que choquen.
+mlx-audio-swift, mlx-swift, mlx-swift-lm,
+EventSource, yyjson (MIT)                 Sí — permisiva; código MIT puede incorporarse a una obra
+                                          GPLv3 (misma dirección que Apache-2.0 en la fila anterior).
+Bibliotecas Apache-2.0 (sección 3)        Sí, en una sola dirección: código Apache-2.0 puede
+                                          incorporarse a una obra GPLv3, pero no al revés
+                                          (Apache-2.0 es incompatible con GPLv2, no con GPLv3).
+Crates Rust MIT OR Apache-2.0 / Zlib OR
+Apache-2.0 OR MIT / Unlicense OR MIT      Sí — cada una ofrece al menos una opción permisiva
+                                          compatible.
+unicode-ident: (MIT OR Apache-2.0) AND
+Unicode-3.0                                Sí — Unicode-3.0 es una licencia permisiva compatible;
+                                          la cláusula AND no añade una restricción copyleft.
+swift-xet (Apache-2.0, resuelto            Sí, en una sola dirección — misma regla que la fila
+2026-08-22, ver sección 3)                 anterior de licencias Apache-2.0. Sección 8, punto 4.
+kokoro-ipa-lexicons-es-pt (NOASSERTION)   DESCONOCIDO, pero son datos que el usuario descarga en
+                                          tiempo de ejecución, no código enlazado en el binario;
+                                          no afecta a la licencia del código propio del proyecto.
+                                          Sección 8, punto 3.
+Pesos de kokoro-82m-4bit (Apache-2.0)     Sí (además son datos que descarga el usuario, no se
+                                          distribuyen con el instalador).
+Pesos de translategemma-4b-it-4bit
+(Gemma Terms of Use)                      No es una licencia libre, pero son datos que el usuario
+                                          descarga; no se distribuyen con la aplicación y no afectan
+                                          a la licencia del código. Sección 8, punto 2.
+
+
+================================================================================
+7. Atribuciones exigidas
+================================================================================
+
+El dictamen de cumplimiento NFR11 archivado en `docs/compliance/NFR11-G2P-CIERRE-001.docx` y
+`docs/compliance/gate-a-nfr11-review-request.md` condiciona la distribución a que estas atribuciones
+aparezcan en un lugar visible de la aplicación. El panel "Acerca de" muestra este archivo completo,
+con lo que quedan cubiertas:
+
+  - gruut — Michael Hansen (rhasspy) — https://github.com/rhasspy/gruut — origen de los lexicones
+    IPA de español y portugués.
+  - byT5 / g2p multilingüe — `charsiu/g2p_multilingual_byT5_tiny_16_layers_100`, conversión MLX de
+    beshkenadze — fonemización neuronal.
+  - Misaki — hexgrad — Apache-2.0 — fonemización de inglés.
+  - eSpeak NG — Jonathan Duddington (autor original de eSpeak), Reece H. Dunn y colaboradores —
+    GPL-3.0-or-later.
+
+
+================================================================================
+8. Pendiente antes de cualquier distribución pública (NFR11)
+================================================================================
+
+Elegir la GPL-3.0-or-later cierra el conflicto de licencias de fondo, pero no cierra por sí solo las
+obligaciones de distribución. Estos puntos siguen abiertos y se enumeran de forma explícita para que
+no queden como omisión silenciosa.
+
+8.1 Obligaciones GPLv3 al distribuir binarios
+    La premisa del dictamen jurídico del 2026-08-19 ("el binario no empaqueta ni ejecuta eSpeak NG",
+    §3.2/§4.2 de `NFR11-G2P-CIERRE-001.docx`) dejó de ser cierta cuando se activó la fonemización de
+    numerales en español y `scripts/embed-runtimes.sh` empezó a copiar eSpeak NG, su dylib y
+    `pcaudiolib` dentro del bundle firmado. Con el proyecto bajo GPL-3.0-or-later ya no hay
+    incompatibilidad: la obra combinada se distribuye bajo la misma licencia que exige el componente
+    copyleft — decisión explícita del propietario (2026-08-20), que incluye conscientemente la
+    consecuencia del punto (d) siguiente.
+    Lo que queda por hacer antes de distribuir un binario:
+      a) publicar el código fuente correspondiente de la propia aplicación, o entregarlo a todo
+         receptor del binario (GPLv3 §6);
+      b) acompañar el binario del texto de la licencia — el archivo `LICENSE` de este repositorio —
+         y de este `NOTICE`;
+      c) ofrecer el código fuente correspondiente de eSpeak NG 1.52.0 y pcaudiolib 1.3 tal como se
+         empaquetaron, o el enlace admitido por la GPLv3 §6 para binarios no modificados obtenidos de
+         un tercero — **cumplido**: ninguno de los dos binarios se modificó respecto de su fuente
+         pública, así que el enlace a esa fuente, con la versión exacta empaquetada, es la oferta:
+           - eSpeak NG 1.52.0 — <https://github.com/espeak-ng/espeak-ng> (GPL-3.0-or-later, el
+             mismo repositorio del que procede el binario embebido);
+           - pcaudiolib 1.3 — <https://github.com/espeak-ng/pcaudiolib> (GPL-3.0-or-later).
+         Si en el futuro se empaqueta una versión modificada de cualquiera de los dos, esta oferta
+         deja de ser válida y hay que sustituirla por el código fuente de esa modificación concreta;
+      d) **la distribución por la Mac App Store queda descartada mientras el proyecto empaquete
+         componentes GPL**: los términos de uso de la tienda imponen al usuario restricciones de
+         copia y de número de dispositivos que la GPL prohíbe añadir. Es un cambio respecto de la
+         recomendación de "ambos canales en paralelo" del dictamen, que se emitió suponiendo que no
+         había componentes GPL en el binario. Canales viables: distribución directa, notarizada, con
+         el código fuente disponible. El propietario aceptó explícitamente esta consecuencia al
+         confirmar la elección de licencia.
+
+8.2 `translategemma-4b-it-4bit` se rige por los Gemma Terms of Use, que no son una licencia libre:
+    exigen entregar el archivo de aviso correspondiente a todo receptor posterior y aplican la Gemma
+    Prohibited Use Policy. Los pesos los descarga el dispositivo del usuario y no viajan en el
+    instalador, así que no afectan a la licencia del código; pero el texto de los términos de Gemma
+    todavía no se entrega con la aplicación, y su restricción `commercial_review_pending` sigue
+    abierta.
+
+8.3 `kokoro-ipa-lexicons-es-pt` conserva `license_id: NOASSERTION` y `license_review_required`. El
+    dictamen lo aprobó con condiciones (atribución a gruut, cumplida en la sección 7) y dejó
+    constancia de que la postura contraria — extracción masiva como "vaciado" de base de datos — no
+    se resolvió con jurisprudencia específica. Riesgo aceptado y documentado, no certeza jurídica.
+    Como son datos que descarga el usuario, no bloquean la licencia del código.
+
+8.4 **Resuelto 2026-08-22** (abierto desde 2026-08-20). `swift-xet` llega al bundle dentro de
+    `mlx-audio-swift-tts`. El 2026-08-20 el repositorio (`mattt/swift-xet` 0.2.3) no publicaba
+    archivo ni declaración de licencia. Verificado de nuevo el 2026-08-22 vía la API de GitHub: el
+    repositorio se trasladó a `huggingface/swift-xet` y ahora incluye `LICENSE` —
+    `gh api repos/mattt/swift-xet` (que redirige al destino actual) devuelve
+    `license.spdx_id: apache-2.0`. Apache-2.0 es compatible en una sola dirección con GPLv3, igual
+    que el resto de dependencias Apache-2.0 de la sección 3 (véase la tabla de la sección 6). Ya no
+    bloquea la distribución del binario.
+
+8.5 Los tres manifiestos distribuidos siguen con `distribution_status: pending_review`. El dictamen
+    recomienda actualizarlos, pero ese cambio de datos requiere autorización explícita del
+    propietario y no se aplicó en esta story.
+
+8.6 Derechos sobre el audio generado. El dictamen concluyó que el audio generado mecánicamente no es
+    elegible para copyright tradicional y que el usuario puede usarlo y exportarlo sin restricción.
+    Bajo GPL-3.0-or-later la licencia del programa tampoco alcanza a su salida. Queda como tarea de
+    redacción — no jurídica — dejarlo dicho de forma visible para el usuario, ya que hoy no aparece
+    en ninguna parte de la aplicación.
+
+8.7 La aplicación no tiene un ícono propio (usa el genérico que macOS asigna por defecto) ni ningún
+    mecanismo de actualización automática. Ninguno de los dos bloquea la distribución directa que el
+    punto 1.d deja como único canal viable, pero ambos son elementos formales esperables de una
+    aplicación macOS distribuible y quedan pendientes de diseño/implementación futura.

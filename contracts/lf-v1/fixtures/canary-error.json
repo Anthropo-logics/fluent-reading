@@ -1,0 +1,13 @@
+{
+  "code": "LF_CONTRACT_INVALID_JSON",
+  "message_key": "contract.invalid_json",
+  "scope": {
+    "job_id": null,
+    "document_id": null,
+    "page_index": null,
+    "unit_id": null,
+    "model_id": null,
+    "export_job_id": null
+  },
+  "details": {}
+}

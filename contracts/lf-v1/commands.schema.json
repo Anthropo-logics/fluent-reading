@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lf-v1/commands.schema.json",
+  "title": "LF v1 request",
+  "type": "object",
+  "required": ["schema_version", "request_id", "command", "payload"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "request_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "command": { "enum": ["canary", "open_document", "plan_session", "mutate_session", "normalize_page", "tts_synthesize", "gate_a_run"] },
+    "payload": { "type": "object" }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "command": { "const": "canary" },
+        "payload": { "type": "object", "maxProperties": 0 }
+      }
+    },
+    {
+      "properties": {
+        "command": { "const": "open_document" },
+        "payload": {
+          "type": "object",
+          "required": ["access_grant_id", "document_fingerprint", "page_count", "first_page_ms"],
+          "properties": {
+            "access_grant_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+            "document_fingerprint": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "page_count": { "type": "integer", "minimum": 1 },
+            "first_page_ms": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "properties": {
+        "command": { "const": "plan_session" },
+        "payload": { "$ref": "incremental-session.schema.json#/$defs/request" }
+      }
+    },
+    {
+      "properties": {
+        "command": { "const": "mutate_session" },
+        "payload": { "$ref": "incremental-session.schema.json#/$defs/mutation" }
+      }
+    },
+    {
+      "properties": {
+        "command": { "const": "normalize_page" },
+        "payload": {
+          "type": "object",
+          "required": ["page", "language", "requested_unit", "route", "adapter_status"],
+          "properties": {
+            "page": {
+              "type": "object",
+              "required": ["document_fingerprint", "generation_id", "page_index", "blocks"]
+            },
+            "language": { "enum": ["es", "en", "pt"] },
+            "requested_unit": { "enum": ["paragraph", "sentence"] },
+            "route": { "enum": ["direct_text", "ocr"] },
+            "adapter_status": { "enum": ["completed", "degraded", "failed"] }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "properties": {
+        "command": { "const": "tts_synthesize" },
+        "payload": { "$ref": "tts-synthesis.schema.json#/$defs/requestPayload" }
+      }
+    },
+    {
+      "properties": {
+        "command": { "const": "gate_a_run" },
+        "payload": { "$ref": "gate-a-run.schema.json#/$defs/request" }
+      }
+    }
+  ],
+  "additionalProperties": true
+}

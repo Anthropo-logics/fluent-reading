@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "document_id": "en-multi-digital",
+  "revision": 1,
+  "pages": [
+    {
+      "page_index": 0,
+      "blocks": [
+        {
+          "block_id": "en-multi-digital-block-0",
+          "order": 0,
+          "text": "READING IN ENGLISH 1",
+          "region": [
+            0.1,
+            0.08,
+            0.38,
+            0.12
+          ],
+          "paragraphs": [
+            {
+              "paragraph_id": "en-multi-digital-paragraph-0",
+              "sentences": [
+                {
+                  "sentence_id": "en-multi-digital-sentence-0",
+                  "text": "READING IN ENGLISH 1"
+                }
+              ]
+            }
+          ],
+          "degradation": null
+        },
+        {
+          "block_id": "en-multi-digital-block-1",
+          "order": 1,
+          "text": "READING IN ENGLISH 1 COLUMN TWO",
+          "region": [
+            0.51,
+            0.08,
+            0.38,
+            0.12
+          ],
+          "paragraphs": [
+            {
+              "paragraph_id": "en-multi-digital-paragraph-1",
+              "sentences": [
+                {
+                  "sentence_id": "en-multi-digital-sentence-1",
+                  "text": "READING IN ENGLISH 1 COLUMN TWO"
+                }
+              ]
+            }
+          ],
+          "degradation": null
+        }
+      ]
+    }
+  ],
+  "unsupported": []
+}

@@ -1,0 +1,342 @@
+{
+  "schema_version": 1,
+  "corpus_id": "lf-corpus-v1",
+  "entries": [
+    {
+      "id": "es-single-digital",
+      "role": "matrix",
+      "file": "documents/es-single-digital.pdf",
+      "sha256": "e0be7ac999ea427c2c73e6859e9a04b7dfcee97d0b7232558c5cbfa7f78aa031",
+      "byte_size": 595,
+      "provenance": {
+        "source": "scripts/generate-corpus-fixtures.mjs",
+        "permission": "owned",
+        "evidence": "deterministic-generator-v1"
+      },
+      "classification": {
+        "layout": "single_column",
+        "content": "digital"
+      },
+      "language": "es",
+      "required": true,
+      "distributable": true,
+      "page_count": 1,
+      "pages_evaluated": [
+        0
+      ],
+      "ground_truth": "expected/es-single-digital.json"
+    },
+    {
+      "id": "es-multi-digital",
+      "role": "matrix",
+      "file": "documents/es-multi-digital.pdf",
+      "sha256": "dd65484b281e51dd5a827d17a47eb881138c5b8827aa49f39905f7ddf437cd20",
+      "byte_size": 660,
+      "provenance": {
+        "source": "scripts/generate-corpus-fixtures.mjs",
+        "permission": "owned",
+        "evidence": "deterministic-generator-v1"
+      },
+      "classification": {
+        "layout": "multi_column",
+        "content": "digital"
+      },
+      "language": "es",
+      "required": true,
+      "distributable": true,
+      "page_count": 1,
+      "pages_evaluated": [
+        0
+      ],
+      "ground_truth": "expected/es-multi-digital.json"
+    },
+    {
+      "id": "es-single-scanned",
+      "role": "matrix",
+      "file": "documents/es-single-scanned.pdf",
+      "sha256": "b5fde71187b8333aecb8f6d513f888e67360fb6440d240e234fb18be2e574605",
+      "byte_size": 8157,
+      "provenance": {
+        "source": "scripts/generate-corpus-fixtures.mjs",
+        "permission": "owned",
+        "evidence": "deterministic-generator-v1"
+      },
+      "classification": {
+        "layout": "single_column",
+        "content": "scanned"
+      },
+      "language": "es",
+      "required": true,
+      "distributable": true,
+      "page_count": 1,
+      "pages_evaluated": [
+        0
+      ],
+      "ground_truth": "expected/es-single-scanned.json"
+    },
+    {
+      "id": "es-mixed",
+      "role": "matrix",
+      "file": "documents/es-mixed.pdf",
+      "sha256": "2c804ee51477b2fdd68030df9b19bbdf51712f01b292db8bad7e258435889087",
+      "byte_size": 8320,
+      "provenance": {
+        "source": "scripts/generate-corpus-fixtures.mjs",
+        "permission": "owned",
+        "evidence": "deterministic-generator-v1"
+      },
+      "classification": {
+        "layout": "multi_column",
+        "content": "mixed"
+      },
+      "language": "es",
+      "required": true,
+      "distributable": true,
+      "page_count": 1,
+      "pages_evaluated": [
+        0
+      ],
+      "ground_truth": "expected/es-mixed.json"
+    },
+    {
+      "id": "en-single-digital",
+      "role": "matrix",
+      "file": "documents/en-single-digital.pdf",
+      "sha256": "4265a5c6112b4a854c98a747261cf869b5f551595e0ce7c6b710f3f44ac67685",
+      "byte_size": 595,
+      "provenance": {
+        "source": "scripts/generate-corpus-fixtures.mjs",
+        "permission": "owned",
+        "evidence": "deterministic-generator-v1"
+      },
+      "classification": {
+        "layout": "single_column",
+        "content": "digital"
+      },
+      "language": "en",
+      "required": true,
+      "distributable": true,
+      "page_count": 1,
+      "pages_evaluated": [
+        0
+      ],
+      "ground_truth": "expected/en-single-digital.json"
+    },
+    {
+      "id": "en-multi-digital",
+      "role": "matrix",
+      "file": "documents/en-multi-digital.pdf",
+      "sha256": "1ec3a40c18aad0329056538bd02e286dceb61a3ce41b1fba85115307de778b9d",
+      "byte_size": 660,
+      "provenance": {
+        "source": "scripts/generate-corpus-fixtures.mjs",
+        "permission": "owned",
+        "evidence": "deterministic-generator-v1"
+      },
+      "classification": {
+        "layout": "multi_column",
+        "content": "digital"
+      },
+      "language": "en",
+      "required": true,
+      "distributable": true,
+      "page_count": 1,
+      "pages_evaluated": [
+        0
+      ],
+      "ground_truth": "expected/en-multi-digital.json"
+    },
+    {
+      "id": "en-single-scanned",
+      "role": "matrix",
+      "file": "documents/en-single-scanned.pdf",
+      "sha256": "b11895fd29de509a141f43954d5bbebc1664db7f3b53e4f0d77f3664df45a2f0",
+      "byte_size": 8157,
+      "provenance": {
+        "source": "scripts/generate-corpus-fixtures.mjs",
+        "permission": "owned",
+        "evidence": "deterministic-generator-v1"
+      },
+      "classification": {
+        "layout": "single_column",
+        "content": "scanned"
+      },
+      "language": "en",
+      "required": true,
+      "distributable": true,
+      "page_count": 1,
+      "pages_evaluated": [
+        0
+      ],
+      "ground_truth": "expected/en-single-scanned.json"
+    },
+    {
+      "id": "en-mixed",
+      "role": "matrix",
+      "file": "documents/en-mixed.pdf",
+      "sha256": "9bd33e21649fee903968c55bf78a6ce6e66e2a41c877e113f05993348979da28",
+      "byte_size": 8320,
+      "provenance": {
+        "source": "scripts/generate-corpus-fixtures.mjs",
+        "permission": "owned",
+        "evidence": "deterministic-generator-v1"
+      },
+      "classification": {
+        "layout": "multi_column",
+        "content": "mixed"
+      },
+      "language": "en",
+      "required": true,
+      "distributable": true,
+      "page_count": 1,
+      "pages_evaluated": [
+        0
+      ],
+      "ground_truth": "expected/en-mixed.json"
+    },
+    {
+      "id": "pt-single-digital",
+      "role": "matrix",
+      "file": "documents/pt-single-digital.pdf",
+      "sha256": "85755d4723d5d2cc32a1fb6ceb80a3f84fa704d768be7ca98af794b5164ce51e",
+      "byte_size": 599,
+      "provenance": {
+        "source": "scripts/generate-corpus-fixtures.mjs",
+        "permission": "owned",
+        "evidence": "deterministic-generator-v1"
+      },
+      "classification": {
+        "layout": "single_column",
+        "content": "digital"
+      },
+      "language": "pt",
+      "required": true,
+      "distributable": true,
+      "page_count": 1,
+      "pages_evaluated": [
+        0
+      ],
+      "ground_truth": "expected/pt-single-digital.json"
+    },
+    {
+      "id": "pt-multi-digital",
+      "role": "matrix",
+      "file": "documents/pt-multi-digital.pdf",
+      "sha256": "d3ed542f94a85cb6ae0f168c324a7c6df2322209bca79c5e455a397321b8f380",
+      "byte_size": 668,
+      "provenance": {
+        "source": "scripts/generate-corpus-fixtures.mjs",
+        "permission": "owned",
+        "evidence": "deterministic-generator-v1"
+      },
+      "classification": {
+        "layout": "multi_column",
+        "content": "digital"
+      },
+      "language": "pt",
+      "required": true,
+      "distributable": true,
+      "page_count": 1,
+      "pages_evaluated": [
+        0
+      ],
+      "ground_truth": "expected/pt-multi-digital.json"
+    },
+    {
+      "id": "pt-single-scanned",
+      "role": "matrix",
+      "file": "documents/pt-single-scanned.pdf",
+      "sha256": "075bf7a0a1660b138ae5a9af35cdd352de1557469bcff85db52379d1ec51cf3c",
+      "byte_size": 9669,
+      "provenance": {
+        "source": "scripts/generate-corpus-fixtures.mjs",
+        "permission": "owned",
+        "evidence": "deterministic-generator-v1"
+      },
+      "classification": {
+        "layout": "single_column",
+        "content": "scanned"
+      },
+      "language": "pt",
+      "required": true,
+      "distributable": true,
+      "page_count": 1,
+      "pages_evaluated": [
+        0
+      ],
+      "ground_truth": "expected/pt-single-scanned.json"
+    },
+    {
+      "id": "pt-mixed",
+      "role": "matrix",
+      "file": "documents/pt-mixed.pdf",
+      "sha256": "70ff5dc07286724ee96222cc68de15038ee72ab2967988c5c4c952ea5811b07e",
+      "byte_size": 9836,
+      "provenance": {
+        "source": "scripts/generate-corpus-fixtures.mjs",
+        "permission": "owned",
+        "evidence": "deterministic-generator-v1"
+      },
+      "classification": {
+        "layout": "multi_column",
+        "content": "mixed"
+      },
+      "language": "pt",
+      "required": true,
+      "distributable": true,
+      "page_count": 1,
+      "pages_evaluated": [
+        0
+      ],
+      "ground_truth": "expected/pt-mixed.json"
+    },
+    {
+      "id": "long-1000-pages",
+      "role": "long_form",
+      "file": "documents/long-1000-pages.pdf",
+      "sha256": "4acd91dddd4059fdf1d854eeb168108f465244103c3dd7739763276812c240c9",
+      "byte_size": 279033,
+      "provenance": {
+        "source": "scripts/generate-corpus-fixtures.mjs",
+        "permission": "owned",
+        "evidence": "deterministic-generator-v1"
+      },
+      "classification": {
+        "layout": "single_column",
+        "content": "digital"
+      },
+      "language": "es",
+      "required": true,
+      "distributable": true,
+      "page_count": 1000,
+      "pages_evaluated": [
+        0
+      ],
+      "ground_truth": "expected/long-1000-pages.json"
+    },
+    {
+      "id": "adversarial-rotated",
+      "role": "adversarial",
+      "file": "documents/adversarial-rotated.pdf",
+      "sha256": "2474367fc14ec2a107a3caa3840e087a0d99cee8437a9965b27ccc4eb9fd2087",
+      "byte_size": 606,
+      "provenance": {
+        "source": "scripts/generate-corpus-fixtures.mjs",
+        "permission": "owned",
+        "evidence": "deterministic-generator-v1"
+      },
+      "classification": {
+        "layout": "single_column",
+        "content": "digital"
+      },
+      "language": "en",
+      "required": true,
+      "distributable": true,
+      "page_count": 1,
+      "pages_evaluated": [
+        0
+      ],
+      "ground_truth": "expected/adversarial-rotated.json"
+    }
+  ]
+}

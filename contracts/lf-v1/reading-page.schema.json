@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lf-v1/reading-page.schema.json",
+  "title": "LF v1 normalized digital page",
+  "type": "object",
+  "required": ["record", "units", "anchors", "omissions"],
+  "properties": {
+    "record": {
+      "type": "object",
+      "required": ["page_id", "page_index", "route", "reason_code", "status", "confidence", "elapsed_ms", "processor_revision", "error_code"],
+      "properties": {
+        "page_id": { "type": "string", "pattern": "^page_[a-f0-9]{64}$" },
+        "page_index": { "type": "integer", "minimum": 0 },
+        "route": { "enum": ["direct_text", "ocr"] },
+        "reason_code": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "status": { "enum": ["completed", "degraded", "failed"] },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "elapsed_ms": { "type": "integer", "minimum": 0 },
+        "processor_revision": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "error_code": { "type": ["string", "null"], "pattern": "^LF_" }
+      },
+      "additionalProperties": false
+    },
+    "units": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["unit_id", "kind", "content_class", "processing_route", "order_key", "text", "source_regions", "source_block_ids", "parent_unit_id", "confidence", "decision_trace"],
+        "properties": {
+          "unit_id": { "$ref": "#/$defs/id" },
+          "kind": { "enum": ["paragraph", "sentence"] },
+          "content_class": { "enum": ["prose", "table", "formula", "note", "heading", "unsupported"] },
+          "processing_route": { "enum": ["direct_text", "ocr"] },
+          "order_key": {
+            "type": "object",
+            "required": ["primary_page_index", "local_index"],
+            "properties": {
+              "primary_page_index": { "type": "integer", "minimum": 0 },
+              "local_index": { "type": "integer", "minimum": 0 }
+            },
+            "additionalProperties": false
+          },
+          "text": { "type": "string" },
+          "source_regions": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/region" } },
+          "source_block_ids": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/id" } },
+          "parent_unit_id": { "oneOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "decision_trace": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["rule", "confidence", "affected_segments"],
+              "properties": {
+                "rule": { "type": "string", "minLength": 1, "maxLength": 128 },
+                "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+                "affected_segments": { "type": "array", "items": { "$ref": "#/$defs/id" }, "minItems": 1 }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "anchors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["unit_id", "unit_kind", "source_region_index", "sample_offset", "generation_id"],
+        "properties": {
+          "unit_id": { "$ref": "#/$defs/id" },
+          "unit_kind": { "enum": ["paragraph", "sentence"] },
+          "source_region_index": { "type": "integer", "minimum": 0 },
+          "sample_offset": { "type": "integer", "minimum": 0 },
+          "generation_id": { "$ref": "#/$defs/id" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "omissions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/decision" }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_:-]+$" },
+    "decision": {
+      "type": "object",
+      "required": ["rule", "confidence", "affected_segments"],
+      "properties": {
+        "rule": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "affected_segments": { "type": "array", "items": { "$ref": "#/$defs/id" }, "minItems": 1 }
+      },
+      "additionalProperties": false
+    },
+    "region": {
+      "type": "object",
+      "required": ["page_index", "rect_pdf_points", "page_rotation_degrees", "source_to_page_transform", "confidence"],
+      "properties": {
+        "page_index": { "type": "integer", "minimum": 0 },
+        "rect_pdf_points": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "type": "number" } },
+        "page_rotation_degrees": { "type": "integer", "minimum": -360, "maximum": 360 },
+        "source_to_page_transform": { "type": "array", "minItems": 6, "maxItems": 6, "items": { "type": "number" } },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,4 @@
+module LecturaFFI {
+  header "lectura_ffi.h"
+  export *
+}

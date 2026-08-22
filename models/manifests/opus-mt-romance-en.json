@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "id": "opus-mt-romance-en",
+  "model_revision": "e9ca9975e3972afd80732f08ce01d3a1339f47f8",
+  "artifact_revision": "f60feaabe8bb435a5871e7702b25f53a01e770f8",
+  "purpose": "translation",
+  "authors": [
+    "Helsinki-NLP",
+    "Xenova"
+  ],
+  "license_id": "NOASSERTION",
+  "usage_restrictions": [
+    "base_model_helsinki_nlp_opus_mt_romance_en_declares_apache_2_0",
+    "redistributor_xenova_does_not_declare_an_explicit_license_tag",
+    "commercial_review_pending"
+  ],
+  "languages": [
+    "es",
+    "pt",
+    "en"
+  ],
+  "voices": [],
+  "runtime_id": "onnxruntime-swift-package-manager",
+  "runtime_version": "1.24.2",
+  "distribution_status": "pending_review",
+  "artifacts": [
+    {
+      "relative_path": "data/onnx/encoder_model_quantized.onnx",
+      "role": "model_encoder_weights",
+      "source_url": "https://huggingface.co/Xenova/opus-mt-ROMANCE-en/resolve/f60feaabe8bb435a5871e7702b25f53a01e770f8/onnx/encoder_model_quantized.onnx",
+      "publisher": "Xenova",
+      "format": "onnx",
+      "quantization": "int8",
+      "size_bytes": 52899741,
+      "sha256_hex": "13750ba31ee80c88f6bbb28aa03320674c50394efb95f791d5c4f5c8894232bf"
+    },
+    {
+      "relative_path": "data/onnx/decoder_model_merged_quantized.onnx",
+      "role": "model_decoder_weights",
+      "source_url": "https://huggingface.co/Xenova/opus-mt-ROMANCE-en/resolve/f60feaabe8bb435a5871e7702b25f53a01e770f8/onnx/decoder_model_merged_quantized.onnx",
+      "publisher": "Xenova",
+      "format": "onnx",
+      "quantization": "int8",
+      "size_bytes": 60212803,
+      "sha256_hex": "5c0d95a8072a463c747343cf25ac9b4a17e9a90e08131e7efab12691ca13c979"
+    },
+    {
+      "relative_path": "data/source.spm",
+      "role": "tokenizer_vocab_source",
+      "source_url": "https://huggingface.co/Xenova/opus-mt-ROMANCE-en/resolve/f60feaabe8bb435a5871e7702b25f53a01e770f8/source.spm",
+      "publisher": "Xenova",
+      "format": "sentencepiece",
+      "quantization": "not_applicable",
+      "size_bytes": 800087,
+      "sha256_hex": "baeab21ec00d0b490382b82499ef0348235c5a8e75de28aec8290adf62b007c4"
+    },
+    {
+      "relative_path": "data/target.spm",
+      "role": "tokenizer_vocab_target",
+      "source_url": "https://huggingface.co/Xenova/opus-mt-ROMANCE-en/resolve/f60feaabe8bb435a5871e7702b25f53a01e770f8/target.spm",
+      "publisher": "Xenova",
+      "format": "sentencepiece",
+      "quantization": "not_applicable",
+      "size_bytes": 779494,
+      "sha256_hex": "121d4e0a20cda2052945d790d335f421f7bea7fa6b0ff7fbc9112eed5f12036f"
+    },
+    {
+      "relative_path": "data/tokenizer.json",
+      "role": "tokenizer_config",
+      "source_url": "https://huggingface.co/Xenova/opus-mt-ROMANCE-en/resolve/f60feaabe8bb435a5871e7702b25f53a01e770f8/tokenizer.json",
+      "publisher": "Xenova",
+      "format": "json",
+      "quantization": "not_applicable",
+      "size_bytes": 6120151,
+      "sha256_hex": "34979cc78f4dfa92f7b39ad8f0d4068dc7d1be61940f09db5ac77818e013bd99"
+    },
+    {
+      "relative_path": "data/config.json",
+      "role": "model_config",
+      "source_url": "https://huggingface.co/Xenova/opus-mt-ROMANCE-en/resolve/f60feaabe8bb435a5871e7702b25f53a01e770f8/config.json",
+      "publisher": "Xenova",
+      "format": "json",
+      "quantization": "not_applicable",
+      "size_bytes": 1361,
+      "sha256_hex": "df1876a346b1852ef4590bc74c6e180eb2ba10193cf2bded24c31876f357d83c"
+    }
+  ]
+}

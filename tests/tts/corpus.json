@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "corpus_id": "lf-tts-gate-a-v1",
+  "extraction": "inclusive_line_range_trim_join_space",
+  "maximum_words_per_minute_for_long_passage": 170,
+  "sources": [
+    {
+      "id": "es-don-quijote-pg2000",
+      "language": "es",
+      "path": "sources/es-don-quijote-pg2000.txt",
+      "url": "https://www.gutenberg.org/cache/epub/2000/pg2000.txt",
+      "work": "El ingenioso hidalgo don Quijote de la Mancha",
+      "author": "Miguel de Cervantes Saavedra",
+      "rights": "public_domain_original_project_gutenberg_license_transcription",
+      "size_bytes": 2225803,
+      "sha256": "534f41d59f7142163fa0964076ac6351845c006ea6433778be637fac6d5b04d7"
+    },
+    {
+      "id": "en-alice-pg11",
+      "language": "en",
+      "path": "sources/en-alice-pg11.txt",
+      "url": "https://www.gutenberg.org/cache/epub/11/pg11.txt",
+      "work": "Alice's Adventures in Wonderland",
+      "author": "Lewis Carroll",
+      "rights": "public_domain_original_project_gutenberg_license_transcription",
+      "size_bytes": 174311,
+      "sha256": "01b38ea4c710a84bc18d0bd41271a5a1a92b94e97b2812f4dece97d4a694725e"
+    },
+    {
+      "id": "pt-dom-casmurro-pg55752",
+      "language": "pt",
+      "path": "sources/pt-dom-casmurro-pg55752.txt",
+      "url": "https://www.gutenberg.org/cache/epub/55752/pg55752.txt",
+      "work": "Dom Casmurro",
+      "author": "Machado de Assis",
+      "rights": "public_domain_original_project_gutenberg_license_transcription",
+      "size_bytes": 418230,
+      "sha256": "0fc3dbf384544d81d87e5a731e67b7976ac3a57acb378f0f354d12a3b52bd0c7"
+    }
+  ],
+  "passages": [
+    {"id":"es-long","language":"es","source_id":"es-don-quijote-pg2000","line_start":1072,"line_end":1270,"word_count":2299,"long":true,"features":["prose","dialogue","proper_names","numbers","punctuation","chunk_boundaries"]},
+    {"id":"es-first-departure","language":"es","source_id":"es-don-quijote-pg2000","line_start":1236,"line_end":1255,"word_count":261,"long":false,"features":["prose","proper_names","punctuation"]},
+    {"id":"es-inn-dialogue","language":"es","source_id":"es-don-quijote-pg2000","line_start":1458,"line_end":1475,"word_count":180,"long":false,"features":["dialogue","proper_names","punctuation"]},
+    {"id":"es-windmills","language":"es","source_id":"es-don-quijote-pg2000","line_start":2559,"line_end":2580,"word_count":186,"long":false,"features":["dialogue","proper_names","chunk_boundaries"]},
+    {"id":"es-prisoners","language":"es","source_id":"es-don-quijote-pg2000","line_start":6739,"line_end":6760,"word_count":208,"long":false,"features":["dialogue","numbers","punctuation"]},
+
+    {"id":"en-long","language":"en","source_id":"en-alice-pg11","line_start":58,"line_end":260,"word_count":2110,"long":true,"features":["prose","dialogue","proper_names","numbers","punctuation","chunk_boundaries"]},
+    {"id":"en-pool","language":"en","source_id":"en-alice-pg11","line_start":280,"line_end":300,"word_count":191,"long":false,"features":["prose","dialogue","punctuation"]},
+    {"id":"en-caucus","language":"en","source_id":"en-alice-pg11","line_start":485,"line_end":505,"word_count":218,"long":false,"features":["dialogue","proper_names","punctuation"]},
+    {"id":"en-caterpillar","language":"en","source_id":"en-alice-pg11","line_start":959,"line_end":980,"word_count":140,"long":false,"features":["dialogue","proper_names","chunk_boundaries"]},
+    {"id":"en-tea-party","language":"en","source_id":"en-alice-pg11","line_start":1585,"line_end":1605,"word_count":173,"long":false,"features":["dialogue","numbers","punctuation"]},
+
+    {"id":"pt-long","language":"pt","source_id":"pt-dom-casmurro-pg55752","line_start":54,"line_end":300,"word_count":1933,"long":true,"features":["prose","dialogue","proper_names","numbers","punctuation","chunk_boundaries"]},
+    {"id":"pt-chapter-five","language":"pt","source_id":"pt-dom-casmurro-pg55752","line_start":296,"line_end":320,"word_count":216,"long":false,"features":["prose","proper_names","punctuation"]},
+    {"id":"pt-chapter-six","language":"pt","source_id":"pt-dom-casmurro-pg55752","line_start":378,"line_end":400,"word_count":240,"long":false,"features":["dialogue","proper_names","chunk_boundaries"]},
+    {"id":"pt-chapter-ten","language":"pt","source_id":"pt-dom-casmurro-pg55752","line_start":630,"line_end":655,"word_count":167,"long":false,"features":["dialogue","numbers","punctuation"]},
+    {"id":"pt-chapter-twenty-two","language":"pt","source_id":"pt-dom-casmurro-pg55752","line_start":1479,"line_end":1510,"word_count":292,"long":false,"features":["prose","dialogue","proper_names","punctuation"]}
+  ],
+  "candidates": [
+    {"model_id":"kokoro-82m-4bit","model_revision":"e4468a460f6f70b9125a003e0adb1ab7d4904bbd","runtime_id":"mlx-audio-swift","runtime_version":"v0.1.3","seed":null,"screening_status":"advance_to_nfr7","voices":{"es":"ef_dora","en":"af_heart","pt":"pf_dora"}},
+    {"model_id":"qwen3-tts-0.6b-customvoice-4bit","model_revision":"93076f032b285167cbb63aeba1e37ec918968bbb","runtime_id":"mlx-audio-swift","runtime_version":"v0.1.3","seed":null,"screening_status":"screened_out_pronunciation","voices":{"es":"ryan","en":"ryan","pt":"ryan"}},
+    {"model_id":"qwen3-tts-1.7b-customvoice-4bit","model_revision":"f35faf19b0cc2160865af64ecf0f22f83d335135","runtime_id":"mlx-audio-swift","runtime_version":"v0.1.3","seed":null,"screening_status":"screened_out_pronunciation","voices":{"es":"ryan","en":"ryan","pt":"ryan"}}
+  ]
+}

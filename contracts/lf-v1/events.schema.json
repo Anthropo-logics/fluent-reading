@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lf-v1/events.schema.json",
+  "title": "LF v1 event",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "request_id",
+    "job_id",
+    "sequence",
+    "kind",
+    "progress",
+    "result",
+    "error",
+    "recovery"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "request_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "job_id": { "type": "string", "pattern": "^job_" },
+    "sequence": { "type": "integer", "minimum": 0 },
+    "kind": {
+      "enum": [
+        "accepted",
+        "progress",
+        "adapter_requested",
+        "page_completed",
+        "unit_ready",
+        "paused",
+        "recovery_available",
+        "completed",
+        "cancelled",
+        "failed"
+      ]
+    },
+    "progress": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "gate-a-run.schema.json#/$defs/progress" }
+      ]
+    },
+    "result": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["core_version", "message"],
+              "properties": {
+                "core_version": { "type": "string" },
+                "message": { "type": "string" }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["corpus_id", "complete", "document_count", "matrix_document_count", "page_count", "checked_hashes"],
+              "properties": {
+                "corpus_id": { "type": "string" },
+                "complete": { "type": "boolean" },
+                "document_count": { "type": "integer", "minimum": 0 },
+                "matrix_document_count": { "type": "integer", "minimum": 0 },
+                "page_count": { "type": "integer", "minimum": 0 },
+                "checked_hashes": { "type": "integer", "minimum": 0 }
+              }
+            },
+            { "$ref": "document-processing.schema.json" },
+            { "$ref": "model-verification.schema.json" },
+            { "$ref": "tts-synthesis.schema.json#/$defs/result" },
+            { "$ref": "gate-a-run.schema.json" }
+            ,{ "$ref": "incremental-session.schema.json" }
+          ]
+        }
+      ]
+    },
+    "error": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "errors.schema.json" }
+      ]
+    },
+    "recovery": { "type": ["object", "null"] }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "completed" } } },
+      "then": {
+        "properties": {
+          "result": { "type": "object" },
+          "error": { "type": "null" },
+          "recovery": { "type": "null" }
+        }
+      }
+    }
+  ],
+  "additionalProperties": true
+}

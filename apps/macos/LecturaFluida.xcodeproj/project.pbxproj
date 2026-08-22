@@ -1,0 +1,323 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		010000000000000000000001 /* LFContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000101 /* LFContract.swift */; };
+		010000000000000000000002 /* EngineClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000102 /* EngineClient.swift */; };
+		010000000000000000000003 /* LecturaFluidaApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000103 /* LecturaFluidaApp.swift */; };
+		010000000000000000000004 /* CanaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000104 /* CanaryView.swift */; };
+		010000000000000000000005 /* CanaryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000105 /* CanaryViewModel.swift */; };
+		010000000000000000000006 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000106 /* Localizable.xcstrings */; };
+		010000000000000000000007 /* libMacPlatform.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 010000000000000000000121 /* libMacPlatform.a */; };
+		010000000000000000000008 /* LFContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000107 /* LFContractTests.swift */; };
+		010000000000000000000009 /* canary-completed.json in Resources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000109 /* canary-completed.json */; };
+		01000000000000000000000A /* canary-error.json in Resources */ = {isa = PBXBuildFile; fileRef = 01000000000000000000010A /* canary-error.json */; };
+		01000000000000000000000B /* libMacPlatform.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 010000000000000000000121 /* libMacPlatform.a */; };
+		01000000000000000000000C /* CanaryWindowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000108 /* CanaryWindowUITests.swift */; };
+		01000000000000000000000D /* DocumentServicesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01000000000000000000010F /* DocumentServicesTests.swift */; };
+		01000000000000000000000E /* DocumentServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000110 /* DocumentServices.swift */; };
+		01000000000000000000002B /* PDFGlyphReplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000141 /* PDFGlyphReplay.swift */; };
+		01000000000000000000000F /* FileServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000111 /* FileServices.swift */; };
+		010000000000000000000010 /* ReaderViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000112 /* ReaderViewModel.swift */; };
+		010000000000000000000011 /* PDFReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000113 /* PDFReaderView.swift */; };
+		010000000000000000000012 /* ReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000114 /* ReaderView.swift */; };
+		01000000000000000000011E /* TutorialOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01000000000000000000011D /* TutorialOverlay.swift */; };
+		010000000000000000000013 /* ModelServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000115 /* ModelServices.swift */; };
+		01000000000000000000001C /* TranslationServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000126 /* TranslationServices.swift */; };
+		010000000000000000000014 /* ModelServicesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000116 /* ModelServicesTests.swift */; };
+		010000000000000000000019 /* TranslationServicesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000125 /* TranslationServicesTests.swift */; };
+		01000000000000000000001B /* LocalizationContentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01000000000000000000011B /* LocalizationContentTests.swift */; };
+		010000000000000000000020 /* TestEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000130 /* TestEnvironment.swift */; };
+		010000000000000000000015 /* LocalStateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000117 /* LocalStateStore.swift */; };
+		010000000000000000000016 /* kokoro-82m-4bit.json in Resources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000118 /* kokoro-82m-4bit.json */; };
+		010000000000000000000018 /* translategemma-4b-it-4bit.json in Resources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000124 /* translategemma-4b-it-4bit.json */; };
+		010000000000000000000017 /* AudioServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000119 /* AudioServices.swift */; };
+		01000000000000000000001A /* AudiobookServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01000000000000000000011A /* AudiobookServices.swift */; };
+		010000000000000000000021 /* InterfaceLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000131 /* InterfaceLanguage.swift */; };
+		010000000000000000000022 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000132 /* SettingsView.swift */; };
+		010000000000000000000023 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000517 /* InfoPlist.strings */; };
+		010000000000000000000024 /* InterfaceLanguageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000136 /* InterfaceLanguageTests.swift */; };
+		010000000000000000000025 /* AboutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000137 /* AboutView.swift */; };
+		010000000000000000000026 /* ModelCredits.swift in Sources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000138 /* ModelCredits.swift */; };
+		010000000000000000000027 /* NOTICE in Resources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000139 /* NOTICE */; };
+		010000000000000000000951 /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = 010000000000000000000140 /* LICENSE */; };
+		010000000000000000000028 /* AboutCreditsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01000000000000000000013A /* AboutCreditsTests.swift */; };
+		010000000000000000000029 /* TutorialCallout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01000000000000000000013B /* TutorialCallout.swift */; };
+		01000000000000000000002A /* TutorialCalloutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01000000000000000000013C /* TutorialCalloutTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		010000000000000000000201 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 010000000000000000000300 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 010000000000000000000302;
+			remoteInfo = MacPlatform;
+		};
+		010000000000000000000202 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 010000000000000000000300 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 010000000000000000000302;
+			remoteInfo = MacPlatform;
+		};
+		010000000000000000000203 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 010000000000000000000300 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 010000000000000000000301;
+			remoteInfo = LecturaFluida;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		010000000000000000000101 /* LFContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LFContract.swift; sourceTree = "<group>"; };
+		010000000000000000000102 /* EngineClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineClient.swift; sourceTree = "<group>"; };
+		010000000000000000000103 /* LecturaFluidaApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LecturaFluidaApp.swift; sourceTree = "<group>"; };
+		010000000000000000000104 /* CanaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanaryView.swift; sourceTree = "<group>"; };
+		010000000000000000000105 /* CanaryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanaryViewModel.swift; sourceTree = "<group>"; };
+		010000000000000000000106 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		010000000000000000000107 /* LFContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LFContractTests.swift; sourceTree = "<group>"; };
+		010000000000000000000108 /* CanaryWindowUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanaryWindowUITests.swift; sourceTree = "<group>"; };
+		010000000000000000000109 /* canary-completed.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "canary-completed.json"; sourceTree = "<group>"; };
+		01000000000000000000010A /* canary-error.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "canary-error.json"; sourceTree = "<group>"; };
+		01000000000000000000010B /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
+		01000000000000000000010C /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		01000000000000000000010D /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
+		01000000000000000000010E /* LecturaFluida.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = LecturaFluida.entitlements; sourceTree = "<group>"; };
+		01000000000000000000010F /* DocumentServicesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentServicesTests.swift; sourceTree = "<group>"; };
+		010000000000000000000110 /* DocumentServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentServices.swift; sourceTree = "<group>"; };
+		010000000000000000000141 /* PDFGlyphReplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFGlyphReplay.swift; sourceTree = "<group>"; };
+		010000000000000000000111 /* FileServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileServices.swift; sourceTree = "<group>"; };
+		010000000000000000000112 /* ReaderViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderViewModel.swift; sourceTree = "<group>"; };
+		010000000000000000000113 /* PDFReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFReaderView.swift; sourceTree = "<group>"; };
+		010000000000000000000114 /* ReaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderView.swift; sourceTree = "<group>"; };
+		01000000000000000000011D /* TutorialOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutorialOverlay.swift; sourceTree = "<group>"; };
+		010000000000000000000115 /* ModelServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelServices.swift; sourceTree = "<group>"; };
+		010000000000000000000126 /* TranslationServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationServices.swift; sourceTree = "<group>"; };
+		010000000000000000000116 /* ModelServicesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelServicesTests.swift; sourceTree = "<group>"; };
+		010000000000000000000125 /* TranslationServicesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationServicesTests.swift; sourceTree = "<group>"; };
+		01000000000000000000011B /* LocalizationContentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationContentTests.swift; sourceTree = "<group>"; };
+		010000000000000000000130 /* TestEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestEnvironment.swift; sourceTree = "<group>"; };
+		010000000000000000000117 /* LocalStateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalStateStore.swift; sourceTree = "<group>"; };
+		010000000000000000000118 /* kokoro-82m-4bit.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = "kokoro-82m-4bit.json"; path = "../../../../models/manifests/kokoro-82m-4bit.json"; sourceTree = "<group>"; };
+		010000000000000000000124 /* translategemma-4b-it-4bit.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = "translategemma-4b-it-4bit.json"; path = "../../../../models/manifests/translategemma-4b-it-4bit.json"; sourceTree = "<group>"; };
+		010000000000000000000119 /* AudioServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioServices.swift; sourceTree = "<group>"; };
+		01000000000000000000011A /* AudiobookServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudiobookServices.swift; sourceTree = "<group>"; };
+		010000000000000000000131 /* InterfaceLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterfaceLanguage.swift; sourceTree = "<group>"; };
+		010000000000000000000132 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		010000000000000000000133 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		010000000000000000000134 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		010000000000000000000135 /* pt */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = pt; path = pt.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		010000000000000000000136 /* InterfaceLanguageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterfaceLanguageTests.swift; sourceTree = "<group>"; };
+		010000000000000000000137 /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
+		010000000000000000000138 /* ModelCredits.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelCredits.swift; sourceTree = "<group>"; };
+		010000000000000000000139 /* NOTICE */ = {isa = PBXFileReference; lastKnownFileType = text; name = NOTICE; path = ../../../../NOTICE; sourceTree = "<group>"; };
+		010000000000000000000140 /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; name = LICENSE; path = ../../../../LICENSE; sourceTree = "<group>"; };
+		01000000000000000000013A /* AboutCreditsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutCreditsTests.swift; sourceTree = "<group>"; };
+		01000000000000000000013B /* TutorialCallout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutorialCallout.swift; sourceTree = "<group>"; };
+		01000000000000000000013C /* TutorialCalloutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutorialCalloutTests.swift; sourceTree = "<group>"; };
+		010000000000000000000120 /* LecturaFluida.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LecturaFluida.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		010000000000000000000121 /* libMacPlatform.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libMacPlatform.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		010000000000000000000122 /* LecturaMacTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LecturaMacTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		010000000000000000000123 /* LecturaMacUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LecturaMacUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		010000000000000000000401 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (010000000000000000000007 /* libMacPlatform.a in Frameworks */,); runOnlyForDeploymentPostprocessing = 0; };
+		010000000000000000000402 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		010000000000000000000403 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (01000000000000000000000B /* libMacPlatform.a in Frameworks */,); runOnlyForDeploymentPostprocessing = 0; };
+		010000000000000000000404 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		010000000000000000000500 = {
+			isa = PBXGroup;
+			children = (
+				010000000000000000000501 /* Config */,
+				010000000000000000000502 /* MacPlatform */,
+				010000000000000000000505 /* LecturaMacApp */,
+				010000000000000000000509 /* LecturaMacTests */,
+				01000000000000000000050A /* LecturaMacUITests */,
+				01000000000000000000050B /* Contract fixtures */,
+				01000000000000000000050C /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		010000000000000000000501 /* Config */ = {isa = PBXGroup; children = (01000000000000000000010B /* Base.xcconfig */, 01000000000000000000010C /* Debug.xcconfig */, 01000000000000000000010D /* Release.xcconfig */, 01000000000000000000010E /* LecturaFluida.entitlements */,); path = Config; sourceTree = "<group>"; };
+		010000000000000000000502 /* MacPlatform */ = {isa = PBXGroup; children = (010000000000000000000503 /* Contract */, 010000000000000000000504 /* Bridge */, 01000000000000000000050D /* Document */, 01000000000000000000050E /* Files */, 010000000000000000000510 /* Models */, 010000000000000000000515 /* Audio */, 010000000000000000000516 /* Translation */, 010000000000000000000518 /* Preferences */, 010000000000000000000519 /* Tutorial */,); path = MacPlatform; sourceTree = "<group>"; };
+		010000000000000000000518 /* Preferences */ = {isa = PBXGroup; children = (010000000000000000000131 /* InterfaceLanguage.swift */,); path = Preferences; sourceTree = "<group>"; };
+		010000000000000000000519 /* Tutorial */ = {isa = PBXGroup; children = (01000000000000000000013B /* TutorialCallout.swift */,); path = Tutorial; sourceTree = "<group>"; };
+		010000000000000000000503 /* Contract */ = {isa = PBXGroup; children = (010000000000000000000101 /* LFContract.swift */,); path = Contract; sourceTree = "<group>"; };
+		010000000000000000000504 /* Bridge */ = {isa = PBXGroup; children = (010000000000000000000102 /* EngineClient.swift */,); path = Bridge; sourceTree = "<group>"; };
+		01000000000000000000050D /* Document */ = {isa = PBXGroup; children = (010000000000000000000110 /* DocumentServices.swift */, 010000000000000000000141 /* PDFGlyphReplay.swift */,); path = Document; sourceTree = "<group>"; };
+		01000000000000000000050E /* Files */ = {isa = PBXGroup; children = (010000000000000000000111 /* FileServices.swift */, 010000000000000000000117 /* LocalStateStore.swift */,); path = Files; sourceTree = "<group>"; };
+		010000000000000000000510 /* Models */ = {isa = PBXGroup; children = (010000000000000000000115 /* ModelServices.swift */, 010000000000000000000138 /* ModelCredits.swift */,); path = Models; sourceTree = "<group>"; };
+		010000000000000000000516 /* Translation */ = {isa = PBXGroup; children = (010000000000000000000126 /* TranslationServices.swift */,); path = Translation; sourceTree = "<group>"; };
+		010000000000000000000515 /* Audio */ = {isa = PBXGroup; children = (010000000000000000000119 /* AudioServices.swift */, 01000000000000000000011A /* AudiobookServices.swift */,); path = Audio; sourceTree = "<group>"; };
+		010000000000000000000505 /* LecturaMacApp */ = {isa = PBXGroup; children = (010000000000000000000506 /* App */, 010000000000000000000507 /* Canary */, 01000000000000000000050F /* Reader */, 010000000000000000000508 /* Resources */,); path = LecturaMacApp; sourceTree = "<group>"; };
+		010000000000000000000506 /* App */ = {isa = PBXGroup; children = (010000000000000000000103 /* LecturaFluidaApp.swift */, 010000000000000000000132 /* SettingsView.swift */, 010000000000000000000137 /* AboutView.swift */,); path = App; sourceTree = "<group>"; };
+		010000000000000000000507 /* Canary */ = {isa = PBXGroup; children = (010000000000000000000104 /* CanaryView.swift */, 010000000000000000000105 /* CanaryViewModel.swift */,); path = Canary; sourceTree = "<group>"; };
+		01000000000000000000050F /* Reader */ = {isa = PBXGroup; children = (010000000000000000000112 /* ReaderViewModel.swift */, 010000000000000000000113 /* PDFReaderView.swift */, 010000000000000000000114 /* ReaderView.swift */, 01000000000000000000011D /* TutorialOverlay.swift */,); path = Reader; sourceTree = "<group>"; };
+		010000000000000000000508 /* Resources */ = {isa = PBXGroup; children = (010000000000000000000106 /* Localizable.xcstrings */, 010000000000000000000517 /* InfoPlist.strings */, 010000000000000000000118 /* kokoro-82m-4bit.json */, 010000000000000000000124 /* translategemma-4b-it-4bit.json */, 010000000000000000000139 /* NOTICE */, 010000000000000000000140 /* LICENSE */,); path = Resources; sourceTree = "<group>"; };
+		010000000000000000000509 /* LecturaMacTests */ = {isa = PBXGroup; children = (010000000000000000000107 /* LFContractTests.swift */, 01000000000000000000010F /* DocumentServicesTests.swift */, 010000000000000000000116 /* ModelServicesTests.swift */, 01000000000000000000011B /* LocalizationContentTests.swift */, 010000000000000000000136 /* InterfaceLanguageTests.swift */, 010000000000000000000125 /* TranslationServicesTests.swift */, 010000000000000000000130 /* TestEnvironment.swift */, 01000000000000000000013A /* AboutCreditsTests.swift */, 01000000000000000000013C /* TutorialCalloutTests.swift */,); path = LecturaMacTests; sourceTree = "<group>"; };
+		01000000000000000000050A /* LecturaMacUITests */ = {isa = PBXGroup; children = (010000000000000000000108 /* CanaryWindowUITests.swift */,); path = LecturaMacUITests; sourceTree = "<group>"; };
+		01000000000000000000050B /* Contract fixtures */ = {isa = PBXGroup; children = (010000000000000000000109 /* canary-completed.json */, 01000000000000000000010A /* canary-error.json */,); name = "Contract fixtures"; path = ../../contracts/lf-v1/fixtures; sourceTree = "<group>"; };
+		01000000000000000000050C /* Products */ = {isa = PBXGroup; children = (010000000000000000000120 /* LecturaFluida.app */, 010000000000000000000121 /* libMacPlatform.a */, 010000000000000000000122 /* LecturaMacTests.xctest */, 010000000000000000000123 /* LecturaMacUITests.xctest */,); name = Products; sourceTree = "<group>"; };
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		010000000000000000000301 /* LecturaFluida */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 010000000000000000000801 /* Build configuration list for PBXNativeTarget "LecturaFluida" */;
+			buildPhases = (010000000000000000000701 /* Build Rust */, 010000000000000000000601 /* Sources */, 010000000000000000000401 /* Frameworks */, 010000000000000000000511 /* Resources */,);
+			buildRules = ();
+			dependencies = (010000000000000000000211 /* PBXTargetDependency */,);
+			name = LecturaFluida;
+			productName = LecturaFluida;
+			productReference = 010000000000000000000120 /* LecturaFluida.app */;
+			productType = "com.apple.product-type.application";
+		};
+		010000000000000000000302 /* MacPlatform */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 010000000000000000000802 /* Build configuration list for PBXNativeTarget "MacPlatform" */;
+			buildPhases = (010000000000000000000602 /* Sources */, 010000000000000000000402 /* Frameworks */, 010000000000000000000512 /* Resources */,);
+			buildRules = ();
+			dependencies = ();
+			name = MacPlatform;
+			productName = MacPlatform;
+			productReference = 010000000000000000000121 /* libMacPlatform.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+		010000000000000000000303 /* LecturaMacTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 010000000000000000000803 /* Build configuration list for PBXNativeTarget "LecturaMacTests" */;
+			buildPhases = (010000000000000000000702 /* Build Rust */, 010000000000000000000603 /* Sources */, 010000000000000000000403 /* Frameworks */, 010000000000000000000513 /* Resources */,);
+			buildRules = ();
+			dependencies = (010000000000000000000212 /* PBXTargetDependency */,);
+			name = LecturaMacTests;
+			productName = LecturaMacTests;
+			productReference = 010000000000000000000122 /* LecturaMacTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		010000000000000000000304 /* LecturaMacUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 010000000000000000000804 /* Build configuration list for PBXNativeTarget "LecturaMacUITests" */;
+			buildPhases = (010000000000000000000604 /* Sources */, 010000000000000000000404 /* Frameworks */, 010000000000000000000514 /* Resources */,);
+			buildRules = ();
+			dependencies = (010000000000000000000213 /* PBXTargetDependency */,);
+			name = LecturaMacUITests;
+			productName = LecturaMacUITests;
+			productReference = 010000000000000000000123 /* LecturaMacUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		010000000000000000000300 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2620;
+				LastUpgradeCheck = 2620;
+				TargetAttributes = {
+					010000000000000000000301 = {CreatedOnToolsVersion = 26.2; };
+					010000000000000000000302 = {CreatedOnToolsVersion = 26.2; };
+					010000000000000000000303 = {CreatedOnToolsVersion = 26.2; };
+					010000000000000000000304 = {CreatedOnToolsVersion = 26.2; TestTargetID = 010000000000000000000301; };
+				};
+			};
+			buildConfigurationList = 010000000000000000000800 /* Build configuration list for PBXProject "LecturaFluida" */;
+			compatibilityVersion = "Xcode 16.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (en, es, pt, Base,);
+			mainGroup = 010000000000000000000500;
+			productRefGroup = 01000000000000000000050C /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (010000000000000000000301 /* LecturaFluida */, 010000000000000000000302 /* MacPlatform */, 010000000000000000000303 /* LecturaMacTests */, 010000000000000000000304 /* LecturaMacUITests */,);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		010000000000000000000511 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (010000000000000000000006 /* Localizable.xcstrings in Resources */, 010000000000000000000023 /* InfoPlist.strings in Resources */, 010000000000000000000016 /* kokoro-82m-4bit.json in Resources */, 010000000000000000000018 /* translategemma-4b-it-4bit.json in Resources */, 010000000000000000000027 /* NOTICE in Resources */, 010000000000000000000951 /* LICENSE in Resources */,); runOnlyForDeploymentPostprocessing = 0; };
+		010000000000000000000512 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		010000000000000000000513 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (010000000000000000000009 /* canary-completed.json in Resources */, 01000000000000000000000A /* canary-error.json in Resources */,); runOnlyForDeploymentPostprocessing = 0; };
+		010000000000000000000514 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		010000000000000000000701 /* Build Rust */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = ();
+			inputPaths = ();
+			name = "Build Rust";
+			outputPaths = ("$(DERIVED_FILE_DIR)/rust/$(RUST_PROFILE)/liblectura_ffi.a",);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "\"${SRCROOT}/../../scripts/build-rust-macos.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		010000000000000000000702 /* Build Rust */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = ();
+			inputPaths = ();
+			name = "Build Rust";
+			outputPaths = ("$(DERIVED_FILE_DIR)/rust/$(RUST_PROFILE)/liblectura_ffi.a",);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "\"${SRCROOT}/../../scripts/build-rust-macos.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		010000000000000000000601 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (010000000000000000000003 /* LecturaFluidaApp.swift in Sources */, 010000000000000000000004 /* CanaryView.swift in Sources */, 010000000000000000000005 /* CanaryViewModel.swift in Sources */, 010000000000000000000010 /* ReaderViewModel.swift in Sources */, 010000000000000000000011 /* PDFReaderView.swift in Sources */, 010000000000000000000012 /* ReaderView.swift in Sources */, 01000000000000000000011E /* TutorialOverlay.swift in Sources */, 010000000000000000000022 /* SettingsView.swift in Sources */, 010000000000000000000025 /* AboutView.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
+		010000000000000000000602 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (010000000000000000000001 /* LFContract.swift in Sources */, 010000000000000000000002 /* EngineClient.swift in Sources */, 01000000000000000000000E /* DocumentServices.swift in Sources */, 01000000000000000000002B /* PDFGlyphReplay.swift in Sources */, 01000000000000000000000F /* FileServices.swift in Sources */, 010000000000000000000013 /* ModelServices.swift in Sources */, 010000000000000000000015 /* LocalStateStore.swift in Sources */, 010000000000000000000017 /* AudioServices.swift in Sources */, 01000000000000000000001A /* AudiobookServices.swift in Sources */, 01000000000000000000001C /* TranslationServices.swift in Sources */, 010000000000000000000021 /* InterfaceLanguage.swift in Sources */, 010000000000000000000026 /* ModelCredits.swift in Sources */, 010000000000000000000029 /* TutorialCallout.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
+		010000000000000000000603 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (010000000000000000000008 /* LFContractTests.swift in Sources */, 01000000000000000000000D /* DocumentServicesTests.swift in Sources */, 010000000000000000000014 /* ModelServicesTests.swift in Sources */, 01000000000000000000001B /* LocalizationContentTests.swift in Sources */, 010000000000000000000019 /* TranslationServicesTests.swift in Sources */, 010000000000000000000020 /* TestEnvironment.swift in Sources */, 010000000000000000000024 /* InterfaceLanguageTests.swift in Sources */, 010000000000000000000028 /* AboutCreditsTests.swift in Sources */, 01000000000000000000002A /* TutorialCalloutTests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
+		010000000000000000000604 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (01000000000000000000000C /* CanaryWindowUITests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		010000000000000000000211 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = 010000000000000000000302 /* MacPlatform */; targetProxy = 010000000000000000000201 /* PBXContainerItemProxy */; };
+		010000000000000000000212 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = 010000000000000000000302 /* MacPlatform */; targetProxy = 010000000000000000000202 /* PBXContainerItemProxy */; };
+		010000000000000000000213 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = 010000000000000000000301 /* LecturaFluida */; targetProxy = 010000000000000000000203 /* PBXContainerItemProxy */; };
+/* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		010000000000000000000517 /* InfoPlist.strings */ = {isa = PBXVariantGroup; children = (010000000000000000000133 /* en */, 010000000000000000000134 /* es */, 010000000000000000000135 /* pt */,); name = InfoPlist.strings; sourceTree = "<group>"; };
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		010000000000000000000901 /* Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = 01000000000000000000010C /* Debug.xcconfig */; buildSettings = {}; name = Debug; };
+		010000000000000000000902 /* Release */ = {isa = XCBuildConfiguration; baseConfigurationReference = 01000000000000000000010D /* Release.xcconfig */; buildSettings = {}; name = Release; };
+		010000000000000000000911 /* Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = 01000000000000000000010C /* Debug.xcconfig */; buildSettings = {CODE_SIGN_ENTITLEMENTS = Config/LecturaFluida.entitlements; CURRENT_PROJECT_VERSION = 1; ENABLE_APP_SANDBOX = YES; ENABLE_HARDENED_RUNTIME = YES; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "Fluent Reading"; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity"; INFOPLIST_KEY_NSHumanReadableCopyright = "© 2026 Jaili Ivinai Buelvas Diaz. Free software under GPL-3.0-or-later."; MARKETING_VERSION = 0.1.0; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks"; LIBRARY_SEARCH_PATHS = "$(inherited) $(DERIVED_FILE_DIR)/rust/$(RUST_PROFILE)"; OTHER_LDFLAGS = "$(inherited) -llectura_ffi"; PRODUCT_BUNDLE_IDENTIFIER = com.lecturafluida.app; PRODUCT_NAME = LecturaFluida; SWIFT_EMIT_LOC_STRINGS = YES; }; name = Debug; };
+		010000000000000000000912 /* Release */ = {isa = XCBuildConfiguration; baseConfigurationReference = 01000000000000000000010D /* Release.xcconfig */; buildSettings = {CODE_SIGN_ENTITLEMENTS = Config/LecturaFluida.entitlements; CURRENT_PROJECT_VERSION = 1; ENABLE_APP_SANDBOX = YES; ENABLE_HARDENED_RUNTIME = YES; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "Fluent Reading"; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity"; INFOPLIST_KEY_NSHumanReadableCopyright = "© 2026 Jaili Ivinai Buelvas Diaz. Free software under GPL-3.0-or-later."; MARKETING_VERSION = 0.1.0; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks"; LIBRARY_SEARCH_PATHS = "$(inherited) $(DERIVED_FILE_DIR)/rust/$(RUST_PROFILE)"; OTHER_LDFLAGS = "$(inherited) -llectura_ffi"; PRODUCT_BUNDLE_IDENTIFIER = com.lecturafluida.app; PRODUCT_NAME = LecturaFluida; SWIFT_EMIT_LOC_STRINGS = YES; }; name = Release; };
+		010000000000000000000921 /* Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = 01000000000000000000010C /* Debug.xcconfig */; buildSettings = {DEFINES_MODULE = YES; PRODUCT_BUNDLE_IDENTIFIER = com.lecturafluida.MacPlatform; PRODUCT_NAME = MacPlatform; SKIP_INSTALL = YES; }; name = Debug; };
+		010000000000000000000922 /* Release */ = {isa = XCBuildConfiguration; baseConfigurationReference = 01000000000000000000010D /* Release.xcconfig */; buildSettings = {DEFINES_MODULE = YES; PRODUCT_BUNDLE_IDENTIFIER = com.lecturafluida.MacPlatform; PRODUCT_NAME = MacPlatform; SKIP_INSTALL = YES; }; name = Release; };
+		010000000000000000000931 /* Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = 01000000000000000000010C /* Debug.xcconfig */; buildSettings = {GENERATE_INFOPLIST_FILE = YES; LIBRARY_SEARCH_PATHS = "$(inherited) $(DERIVED_FILE_DIR)/rust/$(RUST_PROFILE)"; OTHER_LDFLAGS = "$(inherited) -llectura_ffi"; PRODUCT_BUNDLE_IDENTIFIER = com.lecturafluida.tests; PRODUCT_NAME = LecturaMacTests; }; name = Debug; };
+		010000000000000000000932 /* Release */ = {isa = XCBuildConfiguration; baseConfigurationReference = 01000000000000000000010D /* Release.xcconfig */; buildSettings = {GENERATE_INFOPLIST_FILE = YES; LIBRARY_SEARCH_PATHS = "$(inherited) $(DERIVED_FILE_DIR)/rust/$(RUST_PROFILE)"; OTHER_LDFLAGS = "$(inherited) -llectura_ffi"; PRODUCT_BUNDLE_IDENTIFIER = com.lecturafluida.tests; PRODUCT_NAME = LecturaMacTests; }; name = Release; };
+		010000000000000000000941 /* Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = 01000000000000000000010C /* Debug.xcconfig */; buildSettings = {GENERATE_INFOPLIST_FILE = YES; PRODUCT_BUNDLE_IDENTIFIER = com.lecturafluida.uitests; PRODUCT_NAME = LecturaMacUITests; TEST_TARGET_NAME = LecturaFluida; }; name = Debug; };
+		010000000000000000000942 /* Release */ = {isa = XCBuildConfiguration; baseConfigurationReference = 01000000000000000000010D /* Release.xcconfig */; buildSettings = {GENERATE_INFOPLIST_FILE = YES; PRODUCT_BUNDLE_IDENTIFIER = com.lecturafluida.uitests; PRODUCT_NAME = LecturaMacUITests; TEST_TARGET_NAME = LecturaFluida; }; name = Release; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		010000000000000000000800 /* Build configuration list for PBXProject "LecturaFluida" */ = {isa = XCConfigurationList; buildConfigurations = (010000000000000000000901 /* Debug */, 010000000000000000000902 /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		010000000000000000000801 /* Build configuration list for PBXNativeTarget "LecturaFluida" */ = {isa = XCConfigurationList; buildConfigurations = (010000000000000000000911 /* Debug */, 010000000000000000000912 /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		010000000000000000000802 /* Build configuration list for PBXNativeTarget "MacPlatform" */ = {isa = XCConfigurationList; buildConfigurations = (010000000000000000000921 /* Debug */, 010000000000000000000922 /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		010000000000000000000803 /* Build configuration list for PBXNativeTarget "LecturaMacTests" */ = {isa = XCConfigurationList; buildConfigurations = (010000000000000000000931 /* Debug */, 010000000000000000000932 /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		010000000000000000000804 /* Build configuration list for PBXNativeTarget "LecturaMacUITests" */ = {isa = XCConfigurationList; buildConfigurations = (010000000000000000000941 /* Debug */, 010000000000000000000942 /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+	};
+	rootObject = 010000000000000000000300 /* Project object */;
+}

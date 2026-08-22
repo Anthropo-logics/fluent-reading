@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "document_id": "long-1000-pages",
+  "revision": 1,
+  "pages": [
+    {
+      "page_index": 0,
+      "blocks": [
+        {
+          "block_id": "long-1000-pages-block-0",
+          "order": 0,
+          "text": "LECTURA PAGINA 1",
+          "region": [
+            0.1,
+            0.08,
+            0.8,
+            0.12
+          ],
+          "paragraphs": [
+            {
+              "paragraph_id": "long-1000-pages-paragraph-0",
+              "sentences": [
+                {
+                  "sentence_id": "long-1000-pages-sentence-0",
+                  "text": "LECTURA PAGINA 1"
+                }
+              ]
+            }
+          ],
+          "degradation": null
+        }
+      ]
+    }
+  ],
+  "unsupported": []
+}

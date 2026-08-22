@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lf-v1/model-manifest.schema.json",
+  "title": "LF v1 model manifest",
+  "type": "object",
+  "required": ["schema_version", "id", "model_revision", "artifact_revision", "purpose", "authors", "license_id", "usage_restrictions", "languages", "voices", "runtime_id", "runtime_version", "distribution_status", "artifacts"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": { "$ref": "#/$defs/id" },
+    "model_revision": { "$ref": "#/$defs/id" },
+    "artifact_revision": { "$ref": "#/$defs/id" },
+    "purpose": { "enum": ["tts", "translation"] },
+    "authors": { "$ref": "#/$defs/nonEmptyUniqueStrings" },
+    "license_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "usage_restrictions": { "$ref": "#/$defs/nonEmptyUniqueStrings" },
+    "languages": { "$ref": "#/$defs/nonEmptyUniqueStrings" },
+    "voices": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 256 }
+    },
+    "runtime_id": { "$ref": "#/$defs/id" },
+    "runtime_version": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "distribution_status": { "enum": ["laboratory", "pending_review", "distributable"] },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": { "$ref": "#/$defs/artifact" }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "purpose": { "const": "tts" } } },
+      "then": { "properties": { "voices": { "minItems": 1 } } }
+    },
+    {
+      "if": { "properties": { "purpose": { "const": "translation" } } },
+      "then": { "properties": { "voices": { "maxItems": 0 } } }
+    }
+  ],
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,128}$" },
+    "nonEmptyUniqueStrings": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 256 }
+    },
+    "artifact": {
+      "type": "object",
+      "required": ["relative_path", "role", "source_url", "publisher", "format", "quantization", "size_bytes", "sha256_hex"],
+      "properties": {
+        "relative_path": { "type": "string", "pattern": "^data/[^/].*$", "maxLength": 1024 },
+        "role": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "source_url": { "type": "string", "pattern": "^https://", "maxLength": 2048 },
+        "publisher": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "format": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "quantization": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "size_bytes": { "type": "integer", "minimum": 1, "maximum": 17179869184 },
+        "sha256_hex": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

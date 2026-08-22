@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "id": "translategemma-4b-it-4bit",
+  "model_revision": "5788ec08c047f3f2e17808101b8d9566ac930d58",
+  "artifact_revision": "5788ec08c047f3f2e17808101b8d9566ac930d58",
+  "purpose": "translation",
+  "authors": ["Google", "mlx-community"],
+  "license_id": "gemma",
+  "usage_restrictions": [
+    "gemma_terms_of_use_notice_file_required_on_redistribution",
+    "gemma_prohibited_use_policy_applies",
+    "commercial_review_pending"
+  ],
+  "languages": ["es", "en", "pt", "pt-BR", "pt-PT"],
+  "voices": [],
+  "runtime_id": "mlx-swift-lm",
+  "runtime_version": "gemma3",
+  "distribution_status": "pending_review",
+  "artifacts": [
+    {
+      "relative_path": "data/model.safetensors",
+      "role": "model_weights",
+      "source_url": "https://huggingface.co/mlx-community/translategemma-4b-it-4bit/resolve/5788ec08c047f3f2e17808101b8d9566ac930d58/model.safetensors",
+      "publisher": "mlx-community",
+      "format": "safetensors",
+      "quantization": "4bit",
+      "size_bytes": 2183295977,
+      "sha256_hex": "113acb0c29997a3015af84bec2c8f967cb7b15f8959d1c26b9628b921e324c40"
+    },
+    {
+      "relative_path": "data/model.safetensors.index.json",
+      "role": "model_weights_index",
+      "source_url": "https://huggingface.co/mlx-community/translategemma-4b-it-4bit/resolve/5788ec08c047f3f2e17808101b8d9566ac930d58/model.safetensors.index.json",
+      "publisher": "mlx-community",
+      "format": "json",
+      "quantization": "not_applicable",
+      "size_bytes": 79768,
+      "sha256_hex": "3a5bbc82ff34d68405c524e03aca88d2e455dacf87e3957441c10a389e48c518"
+    },
+    {
+      "relative_path": "data/config.json",
+      "role": "model_config",
+      "source_url": "https://huggingface.co/mlx-community/translategemma-4b-it-4bit/resolve/5788ec08c047f3f2e17808101b8d9566ac930d58/config.json",
+      "publisher": "mlx-community",
+      "format": "json",
+      "quantization": "not_applicable",
+      "size_bytes": 2815,
+      "sha256_hex": "033e1d370b223272e880fc9ba20c570f8464be7ada7b6177d2c8e5be9a10f90c"
+    },
+    {
+      "relative_path": "data/generation_config.json",
+      "role": "generation_config",
+      "source_url": "https://huggingface.co/mlx-community/translategemma-4b-it-4bit/resolve/5788ec08c047f3f2e17808101b8d9566ac930d58/generation_config.json",
+      "publisher": "mlx-community",
+      "format": "json",
+      "quantization": "not_applicable",
+      "size_bytes": 128,
+      "sha256_hex": "1bf6761ba6159ba03953656905638ce2811ef05127fe3e1745ba14a2daa03763"
+    },
+    {
+      "relative_path": "data/tokenizer.json",
+      "role": "tokenizer_config",
+      "source_url": "https://huggingface.co/mlx-community/translategemma-4b-it-4bit/resolve/5788ec08c047f3f2e17808101b8d9566ac930d58/tokenizer.json",
+      "publisher": "mlx-community",
+      "format": "json",
+      "quantization": "not_applicable",
+      "size_bytes": 33384568,
+      "sha256_hex": "4667f2089529e8e7657cfb6d1c19910ae71ff5f28aa7ab2ff2763330affad795"
+    },
+    {
+      "relative_path": "data/tokenizer.model",
+      "role": "tokenizer_vocab_source",
+      "source_url": "https://huggingface.co/mlx-community/translategemma-4b-it-4bit/resolve/5788ec08c047f3f2e17808101b8d9566ac930d58/tokenizer.model",
+      "publisher": "mlx-community",
+      "format": "sentencepiece",
+      "quantization": "not_applicable",
+      "size_bytes": 4689074,
+      "sha256_hex": "1299c11d7cf632ef3b4e11937501358ada021bbdf7c47638d13c0ee982f2e79c"
+    },
+    {
+      "relative_path": "data/tokenizer_config.json",
+      "role": "tokenizer_settings",
+      "source_url": "https://huggingface.co/mlx-community/translategemma-4b-it-4bit/resolve/5788ec08c047f3f2e17808101b8d9566ac930d58/tokenizer_config.json",
+      "publisher": "mlx-community",
+      "format": "json",
+      "quantization": "not_applicable",
+      "size_bytes": 1155413,
+      "sha256_hex": "120c4a25aed6436edaac2e3966c9aa026bc13b5f7d3d9a81fc7afe2569b9e28b"
+    },
+    {
+      "relative_path": "data/special_tokens_map.json",
+      "role": "tokenizer_special_tokens",
+      "source_url": "https://huggingface.co/mlx-community/translategemma-4b-it-4bit/resolve/5788ec08c047f3f2e17808101b8d9566ac930d58/special_tokens_map.json",
+      "publisher": "mlx-community",
+      "format": "json",
+      "quantization": "not_applicable",
+      "size_bytes": 662,
+      "sha256_hex": "2f7b0adf4fb469770bb1490e3e35df87b1dc578246c5e7e6fc76ecf33213a397"
+    },
+    {
+      "relative_path": "data/added_tokens.json",
+      "role": "tokenizer_added_tokens",
+      "source_url": "https://huggingface.co/mlx-community/translategemma-4b-it-4bit/resolve/5788ec08c047f3f2e17808101b8d9566ac930d58/added_tokens.json",
+      "publisher": "mlx-community",
+      "format": "json",
+      "quantization": "not_applicable",
+      "size_bytes": 35,
+      "sha256_hex": "50b2f405ba56a26d4913fd772089992252d7f942123cc0a034d96424221ba946"
+    },
+    {
+      "relative_path": "data/chat_template.jinja",
+      "role": "chat_template",
+      "source_url": "https://huggingface.co/mlx-community/translategemma-4b-it-4bit/resolve/5788ec08c047f3f2e17808101b8d9566ac930d58/chat_template.jinja",
+      "publisher": "mlx-community",
+      "format": "jinja",
+      "quantization": "not_applicable",
+      "size_bytes": 16982,
+      "sha256_hex": "5e85514635b80a62b64c9982810bfdfbdd482be9a59ed12c25ded2bf3aabddaf"
+    }
+  ]
+}

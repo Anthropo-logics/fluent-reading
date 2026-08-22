@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lf-v1/errors.schema.json",
+  "title": "LF v1 error",
+  "type": "object",
+  "required": ["code", "message_key", "scope", "details"],
+  "properties": {
+    "code": { "type": "string", "pattern": "^LF_[A-Z0-9_]+$" },
+    "message_key": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "scope": {
+      "type": "object",
+      "required": [
+        "job_id",
+        "document_id",
+        "page_index",
+        "unit_id",
+        "model_id",
+        "export_job_id"
+      ],
+      "properties": {
+        "job_id": { "type": ["string", "null"] },
+        "document_id": { "type": ["string", "null"] },
+        "page_index": { "type": ["integer", "null"], "minimum": 0 },
+        "unit_id": { "type": ["string", "null"] },
+        "model_id": { "type": ["string", "null"] },
+        "export_job_id": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "details": { "type": "object" }
+  },
+  "additionalProperties": true
+}

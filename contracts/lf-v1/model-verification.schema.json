@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lf-v1/model-verification.schema.json",
+  "title": "LF v1 model verification result",
+  "type": "object",
+  "required": ["model_id", "model_revision", "artifact_revision", "purpose", "runtime_id", "runtime_version", "distribution_status", "checked_artifacts", "total_size_bytes"],
+  "properties": {
+    "model_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "model_revision": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "artifact_revision": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "purpose": { "enum": ["tts", "translation"] },
+    "runtime_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "runtime_version": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "distribution_status": { "enum": ["laboratory", "pending_review", "distributable"] },
+    "checked_artifacts": { "type": "integer", "minimum": 1, "maximum": 32 },
+    "total_size_bytes": { "type": "integer", "minimum": 1, "maximum": 17179869184 }
+  },
+  "additionalProperties": false
+}

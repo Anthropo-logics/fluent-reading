@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lf-v1/narration-segment.schema.json",
+  "title": "LF v1 narration segment",
+  "type": "object",
+  "required": ["unit_id", "segment_index", "unit_sample_offset", "sample_count", "sample_rate_hz", "elapsed_ms", "artifact_hash", "model_revision", "voice_id"],
+  "properties": {
+    "unit_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "segment_index": { "type": "integer", "minimum": 0 },
+    "unit_sample_offset": { "type": "integer", "minimum": 0 },
+    "sample_count": { "type": "integer", "minimum": 1 },
+    "sample_rate_hz": { "type": "integer", "minimum": 8000, "maximum": 384000 },
+    "elapsed_ms": { "type": "integer", "minimum": 1 },
+    "artifact_hash": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      ]
+    },
+    "model_revision": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "voice_id": { "type": "string", "minLength": 1, "maxLength": 128 }
+  },
+  "additionalProperties": false
+}

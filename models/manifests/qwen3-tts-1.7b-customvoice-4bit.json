@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "id": "qwen3-tts-1.7b-customvoice-4bit",
+  "model_revision": "f35faf19b0cc2160865af64ecf0f22f83d335135",
+  "artifact_revision": "f35faf19b0cc2160865af64ecf0f22f83d335135",
+  "purpose": "tts",
+  "authors": ["Qwen", "Alibaba Cloud", "mlx-community"],
+  "license_id": "Apache-2.0",
+  "usage_restrictions": ["commercial_review_pending", "generated_audio_rights_review_pending", "runtime_pair_unverified"],
+  "languages": ["es", "en", "pt"],
+  "voices": ["ryan"],
+  "runtime_id": "mlx-audio-swift",
+  "runtime_version": "v0.1.3",
+  "distribution_status": "pending_review",
+  "artifacts": [
+    {
+      "relative_path": "data/config.json",
+      "role": "model_config",
+      "source_url": "https://huggingface.co/mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-4bit/resolve/f35faf19b0cc2160865af64ecf0f22f83d335135/config.json",
+      "publisher": "mlx-community",
+      "format": "json",
+      "quantization": "not_applicable",
+      "size_bytes": 6058,
+      "sha256_hex": "5a1dd8d7c9f4d04d5bdac309e9e748f16a96b0724d9c4de4974982dd84078715"
+    },
+    {
+      "relative_path": "data/merges.txt",
+      "role": "tokenizer_merges",
+      "source_url": "https://huggingface.co/mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-4bit/resolve/f35faf19b0cc2160865af64ecf0f22f83d335135/merges.txt",
+      "publisher": "mlx-community",
+      "format": "text",
+      "quantization": "not_applicable",
+      "size_bytes": 1671839,
+      "sha256_hex": "599bab54075088774b1733fde865d5bd747cbcc7a547c5bc12610e874e26f5e3"
+    },
+    {
+      "relative_path": "data/model.safetensors",
+      "role": "model_weights",
+      "source_url": "https://huggingface.co/mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-4bit/resolve/f35faf19b0cc2160865af64ecf0f22f83d335135/model.safetensors",
+      "publisher": "mlx-community",
+      "format": "safetensors",
+      "quantization": "mlx_affine_4bit_group64",
+      "size_bytes": 1625226859,
+      "sha256_hex": "45a5b5ccd3cc473b9d3890ea922937036b56b948e8bd8c678e725329abdd1d00"
+    },
+    {
+      "relative_path": "data/tokenizer_config.json",
+      "role": "tokenizer_config",
+      "source_url": "https://huggingface.co/mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-4bit/resolve/f35faf19b0cc2160865af64ecf0f22f83d335135/tokenizer_config.json",
+      "publisher": "mlx-community",
+      "format": "json",
+      "quantization": "not_applicable",
+      "size_bytes": 7344,
+      "sha256_hex": "dc3c31c3bdaedd5016382bb3cbe07323026775ad51f5a4fb564505992ae4a670"
+    },
+    {
+      "relative_path": "data/vocab.json",
+      "role": "tokenizer_vocabulary",
+      "source_url": "https://huggingface.co/mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-4bit/resolve/f35faf19b0cc2160865af64ecf0f22f83d335135/vocab.json",
+      "publisher": "mlx-community",
+      "format": "json",
+      "quantization": "not_applicable",
+      "size_bytes": 2776833,
+      "sha256_hex": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
+    },
+    {
+      "relative_path": "data/speech_tokenizer/config.json",
+      "role": "audio_codec_config",
+      "source_url": "https://huggingface.co/mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-4bit/resolve/f35faf19b0cc2160865af64ecf0f22f83d335135/speech_tokenizer/config.json",
+      "publisher": "mlx-community",
+      "format": "json",
+      "quantization": "not_applicable",
+      "size_bytes": 2336,
+      "sha256_hex": "ee65bb901c876664ab8707c487157aa1a6ee57c65969b28fb5ec9dc211e68167"
+    },
+    {
+      "relative_path": "data/speech_tokenizer/model.safetensors",
+      "role": "audio_codec_weights",
+      "source_url": "https://huggingface.co/mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-4bit/resolve/f35faf19b0cc2160865af64ecf0f22f83d335135/speech_tokenizer/model.safetensors",
+      "publisher": "mlx-community",
+      "format": "safetensors",
+      "quantization": "f32_published_auxiliary",
+      "size_bytes": 682293092,
+      "sha256_hex": "836b7b357f5ea43e889936a3709af68dfe3751881acefe4ecf0dbd30ba571258"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+[package]
+name = "lectura-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["lib", "staticlib"]
+
+[dependencies]
+lectura-core = { path = "../lectura-core" }
+serde_json.workspace = true

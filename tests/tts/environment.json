@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-08-17",
+  "timezone": "America/Bogota",
+  "locale": "es_CO",
+  "hardware": {
+    "model_name": "MacBook Air",
+    "model_identifier": "Mac16,12",
+    "chip": "Apple M4",
+    "cpu_cores": 10,
+    "memory_gib": 16,
+    "architecture": "arm64"
+  },
+  "os": {
+    "name": "macOS",
+    "version": "15.6.1",
+    "build": "24G90"
+  },
+  "toolchains": {
+    "xcode": "26.2 (17C52)",
+    "rustc": "1.97.1 (8bab26f4f 2026-07-14)",
+    "tts_runtime": "mlx-audio-swift v0.1.3"
+  },
+  "power_mode": "to_record_per_run",
+  "network_mode": "to_record_per_run",
+  "seed": null,
+  "seed_reason": "mlx-audio-swift v0.1.3 does not expose a synthesis seed"
+}

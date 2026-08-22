@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lf-v1/tts-synthesis.schema.json",
+  "title": "LF v1 TTS synthesis contracts",
+  "$defs": {
+    "requestPayload": {
+      "type": "object",
+      "required": ["model_id", "model_revision", "runtime_id", "runtime_version", "voice_id", "language", "units"],
+      "properties": {
+        "model_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "model_revision": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "runtime_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "runtime_version": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "voice_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "language": { "enum": ["es", "en", "pt"] },
+        "raw_ipa": { "type": "boolean", "default": false },
+        "units": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "required": ["unit_id", "text"],
+            "properties": {
+              "unit_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+              "text": { "type": "string", "minLength": 1, "maxLength": 524288 }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": ["model_id", "model_revision", "runtime_id", "runtime_version", "voice_id", "language", "audio_path", "segments", "omitted_unit_ids"],
+      "properties": {
+        "model_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "model_revision": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "runtime_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "runtime_version": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "voice_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "language": { "enum": ["es", "en", "pt"] },
+        "audio_path": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "segments": { "type": "array", "items": { "$ref": "narration-segment.schema.json" } },
+        "omitted_unit_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 256 }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

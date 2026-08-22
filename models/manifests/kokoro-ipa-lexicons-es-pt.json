@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "id": "kokoro-ipa-lexicons-es-pt",
+  "model_revision": "a3d069caea9a2b63daed40834514431f73a2f11e",
+  "artifact_revision": "a3d069caea9a2b63daed40834514431f73a2f11e",
+  "purpose": "tts",
+  "authors": ["beshkenadze", "gruut"],
+  "license_id": "NOASSERTION",
+  "usage_restrictions": ["repository_license_metadata_missing", "license_review_required", "kokoro_runtime_auxiliary_only"],
+  "languages": ["es", "pt"],
+  "voices": ["ef_dora", "pf_dora"],
+  "runtime_id": "mlx-audio-swift",
+  "runtime_version": "v0.1.3",
+  "distribution_status": "pending_review",
+  "artifacts": [
+    {
+      "relative_path": "data/es_lexicon.tsv",
+      "role": "g2p_lexicon_es",
+      "source_url": "https://huggingface.co/beshkenadze/kokoro-ipa-lexicons/resolve/a3d069caea9a2b63daed40834514431f73a2f11e/es_lexicon.tsv",
+      "publisher": "beshkenadze",
+      "format": "tsv",
+      "quantization": "not_applicable",
+      "size_bytes": 22908669,
+      "sha256_hex": "73b27dffa4b429fa41fb35ee132151ef70fde7869c23f6dd1d5440e66651368d"
+    },
+    {
+      "relative_path": "data/pt_lexicon.tsv",
+      "role": "g2p_lexicon_pt",
+      "source_url": "https://huggingface.co/beshkenadze/kokoro-ipa-lexicons/resolve/a3d069caea9a2b63daed40834514431f73a2f11e/pt_lexicon.tsv",
+      "publisher": "beshkenadze",
+      "format": "tsv",
+      "quantization": "not_applicable",
+      "size_bytes": 2115398,
+      "sha256_hex": "ca212ceb562ddea7ceeb2d4998b90fad3d81c8c8ff6e2d1401a041cfcde8fa1f"
+    }
+  ]
+}

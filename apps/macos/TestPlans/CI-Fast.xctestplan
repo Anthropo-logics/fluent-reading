@@ -1,0 +1,137 @@
+{
+  "configurations": [
+    {
+      "id": "01000000-0000-0000-0000-000000000001",
+      "name": "CI Fast",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {
+    "environmentVariableEntries": [
+      {
+        "enabled": true,
+        "key": "LECTURA_STRESS_ITERATION",
+        "value": "$(LECTURA_STRESS_ITERATION)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_STRESS_DOCUMENT",
+        "value": "$(LECTURA_STRESS_DOCUMENT)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_STRESS_DURATION_SECONDS",
+        "value": "$(LECTURA_STRESS_DURATION_SECONDS)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_STRESS_METRICS_PATH",
+        "value": "$(LECTURA_STRESS_METRICS_PATH)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_EXTERNAL_VOLUME_DIR",
+        "value": "$(LECTURA_EXTERNAL_VOLUME_DIR)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_REAL_MODEL_PACKAGE",
+        "value": "$(LECTURA_REAL_MODEL_PACKAGE)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_REAL_MODEL_INSTALL_ROOT",
+        "value": "$(LECTURA_REAL_MODEL_INSTALL_ROOT)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_REAL_TRANSLATION_PACKAGE",
+        "value": "$(LECTURA_REAL_TRANSLATION_PACKAGE)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_REAL_TRANSLATION_RUNTIME",
+        "value": "$(LECTURA_REAL_TRANSLATION_RUNTIME)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_REAL_NETWORK_TEST",
+        "value": "$(LECTURA_REAL_NETWORK_TEST)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_EXPORT_RUNTIME_TEST",
+        "value": "$(LECTURA_EXPORT_RUNTIME_TEST)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_MODEL_ROOT",
+        "value": "$(LECTURA_MODEL_ROOT)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_EXPORT_EVIDENCE",
+        "value": "$(LECTURA_EXPORT_EVIDENCE)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_EXPORT_STRESS_TEST",
+        "value": "$(LECTURA_EXPORT_STRESS_TEST)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_EXPORT_STRESS_PHASE1_SECONDS",
+        "value": "$(LECTURA_EXPORT_STRESS_PHASE1_SECONDS)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_EXPORT_STRESS_PHASE2_SECONDS",
+        "value": "$(LECTURA_EXPORT_STRESS_PHASE2_SECONDS)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_REAL_BOOK_PDF",
+        "value": "$(LECTURA_REAL_BOOK_PDF)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_SCANNED_BOOK_PDF",
+        "value": "$(LECTURA_SCANNED_BOOK_PDF)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_IMAGE_ONLY_PDF",
+        "value": "$(LECTURA_IMAGE_ONLY_PDF)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_PDF_CORPUS",
+        "value": "$(LECTURA_PDF_CORPUS)"
+      }
+    ],
+    "targetForVariableExpansion": {
+      "containerPath": "container:LecturaFluida.xcodeproj",
+      "identifier": "010000000000000000000301",
+      "name": "LecturaFluida"
+    }
+  },
+  "testTargets": [
+    {
+      "parallelizable": true,
+      "target": {
+        "containerPath": "container:LecturaFluida.xcodeproj",
+        "identifier": "010000000000000000000303",
+        "name": "LecturaMacTests"
+      }
+    },
+    {
+      "parallelizable": false,
+      "target": {
+        "containerPath": "container:LecturaFluida.xcodeproj",
+        "identifier": "010000000000000000000304",
+        "name": "LecturaMacUITests"
+      }
+    }
+  ],
+  "version": 1
+}

@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "id": "madlad400-3b-mt",
+  "model_revision": "fa184c675da0b5c9e1c8694fccd4e12e2d422094",
+  "artifact_revision": "fa184c675da0b5c9e1c8694fccd4e12e2d422094",
+  "purpose": "translation",
+  "authors": ["Google"],
+  "license_id": "apache-2.0",
+  "usage_restrictions": ["commercial_review_pending"],
+  "languages": ["es", "en", "pt"],
+  "voices": [],
+  "runtime_id": "llama.cpp",
+  "runtime_version": "b10502",
+  "distribution_status": "pending_review",
+  "artifacts": [
+    {
+      "relative_path": "data/model-q4k.gguf",
+      "role": "model_weights",
+      "source_url": "https://huggingface.co/google/madlad400-3b-mt/resolve/fa184c675da0b5c9e1c8694fccd4e12e2d422094/model-q4k.gguf",
+      "publisher": "Google",
+      "format": "gguf",
+      "quantization": "q4_k",
+      "size_bytes": 1654597280,
+      "sha256_hex": "ea6e5531a3e95213c7f0635988d119e078a655c09306e47851e15d4c0c3f9c37"
+    },
+    {
+      "relative_path": "data/spiece.model",
+      "role": "tokenizer_vocab_source",
+      "source_url": "https://huggingface.co/google/madlad400-3b-mt/resolve/fa184c675da0b5c9e1c8694fccd4e12e2d422094/spiece.model",
+      "publisher": "Google",
+      "format": "sentencepiece",
+      "quantization": "not_applicable",
+      "size_bytes": 4427844,
+      "sha256_hex": "ef11ac9a22c7503492f56d48dce53be20e339b63605983e9f27d2cd0e0f3922c"
+    },
+    {
+      "relative_path": "data/tokenizer.json",
+      "role": "tokenizer_config",
+      "source_url": "https://huggingface.co/google/madlad400-3b-mt/resolve/fa184c675da0b5c9e1c8694fccd4e12e2d422094/tokenizer.json",
+      "publisher": "Google",
+      "format": "json",
+      "quantization": "not_applicable",
+      "size_bytes": 16629031,
+      "sha256_hex": "a2799ccc696b752ba00c34f58726bfe253a04921ceb6cfc620400f560474790b"
+    },
+    {
+      "relative_path": "data/config.json",
+      "role": "model_config",
+      "source_url": "https://huggingface.co/google/madlad400-3b-mt/resolve/fa184c675da0b5c9e1c8694fccd4e12e2d422094/config.json",
+      "publisher": "Google",
+      "format": "json",
+      "quantization": "not_applicable",
+      "size_bytes": 749,
+      "sha256_hex": "cad399cab799b99409a6ec2d90d72552257c2bb752861261d2016691e0643e7c"
+    }
+  ]
+}

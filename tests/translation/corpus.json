@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "corpus_id": "lf-translation-story-5.1-v1",
+  "note": "Reutiliza los mismos tres textos de dominio público ya versionados en tests/tts/corpus.json (Story 1.6) — no se introduce material nuevo con derechos inciertos.",
+  "sources": [
+    {
+      "id": "es-don-quijote-pg2000",
+      "language": "es",
+      "path": "../tts/sources/es-don-quijote-pg2000.txt"
+    },
+    {
+      "id": "en-alice-pg11",
+      "language": "en",
+      "path": "../tts/sources/en-alice-pg11.txt"
+    },
+    {
+      "id": "pt-dom-casmurro-pg55752",
+      "language": "pt",
+      "path": "../tts/sources/pt-dom-casmurro-pg55752.txt"
+    }
+  ],
+  "segments": [
+    {"id": "es-01", "language": "es", "source_id": "es-don-quijote-pg2000", "text": "En esto, descubrieron treinta o cuarenta molinos de viento que hay en aquel campo."},
+    {"id": "es-02", "language": "es", "source_id": "es-don-quijote-pg2000", "text": "¿Qué gigantes? —dijo Sancho Panza."},
+    {"id": "es-03", "language": "es", "source_id": "es-don-quijote-pg2000", "text": "Aquellos que allí ves —respondió su amo— de los brazos largos, que los suelen tener algunos de casi dos leguas."},
+    {"id": "es-04", "language": "es", "source_id": "es-don-quijote-pg2000", "text": "Mire vuestra merced —respondió Sancho— que aquellos que allí se parecen no son gigantes, sino molinos de viento, y lo que en ellos parecen brazos son las aspas, que, volteadas del viento, hacen andar la piedra del molino.", "features": ["chunk_boundaries", "context_dependent_pronoun"]},
+    {"id": "es-05", "language": "es", "source_id": "es-don-quijote-pg2000", "text": "No me levantaré jamás de donde estoy, valeroso caballero, fasta que la vuestra cortesía me otorgue un don que pedirle quiero, el cual redundará en alabanza vuestra y en pro del género humano."},
+    {"id": "es-06", "language": "es", "source_id": "es-don-quijote-pg2000", "text": "El ventero, que vio a su huésped a sus pies y oyó semejantes razones, estaba confuso mirándole, sin saber qué hacerse ni decirle."},
+    {"id": "es-07", "language": "es", "source_id": "es-don-quijote-pg2000", "text": "No esperaba yo menos de la gran magnificencia vuestra, señor mío."},
+    {"id": "es-08", "language": "es", "source_id": "es-don-quijote-pg2000", "text": "Ésta es cadena de galeotes, gente forzada del rey, que va a las galeras."},
+    {"id": "es-09", "language": "es", "source_id": "es-don-quijote-pg2000", "text": "¿Cómo gente forzada? —preguntó don Quijote—. ¿Es posible que el rey haga fuerza a ninguna gente?"},
+    {"id": "es-10", "language": "es", "source_id": "es-don-quijote-pg2000", "text": "No digo eso —respondió Sancho—, sino que es gente que, por sus delitos, va condenada a servir al rey en las galeras de por fuerza."},
+
+    {"id": "en-01", "language": "en", "source_id": "en-alice-pg11", "text": "Who are you? said the Caterpillar."},
+    {"id": "en-02", "language": "en", "source_id": "en-alice-pg11", "text": "This was not an encouraging opening for a conversation."},
+    {"id": "en-03", "language": "en", "source_id": "en-alice-pg11", "text": "I can't explain myself, I'm afraid, sir, said Alice, because I'm not myself, you see."},
+    {"id": "en-04", "language": "en", "source_id": "en-alice-pg11", "text": "I don't see, said the Caterpillar."},
+    {"id": "en-05", "language": "en", "source_id": "en-alice-pg11", "text": "Curiouser and curiouser! cried Alice."},
+    {"id": "en-06", "language": "en", "source_id": "en-alice-pg11", "text": "Oh, my poor little feet, I wonder who will put on your shoes and stockings for you now, dears?"},
+    {"id": "en-07", "language": "en", "source_id": "en-alice-pg11", "text": "They were indeed a queer-looking party that assembled on the bank, the birds with draggled feathers, the animals with their fur clinging close to them, and all dripping wet, cross, and uncomfortable.", "features": ["chunk_boundaries", "context_dependent_pronoun"]},
+    {"id": "en-08", "language": "en", "source_id": "en-alice-pg11", "text": "I am older than you, and must know better."},
+    {"id": "en-09", "language": "en", "source_id": "en-alice-pg11", "text": "There isn't any, said the March Hare."},
+    {"id": "en-10", "language": "en", "source_id": "en-alice-pg11", "text": "Then it wasn't very civil of you to offer it, said Alice angrily."},
+
+    {"id": "pt-01", "language": "pt", "source_id": "pt-dom-casmurro-pg55752", "text": "Tio Cosme vivia com minha mãe, desde que ella enviuvou."},
+    {"id": "pt-02", "language": "pt", "source_id": "pt-dom-casmurro-pg55752", "text": "Já então era viuvo, como prima Justina; era a casa dos tres viuvos."},
+    {"id": "pt-03", "language": "pt", "source_id": "pt-dom-casmurro-pg55752", "text": "Era gordo e pesado, tinha a respiração curta e os olhos dorminhocos."},
+    {"id": "pt-04", "language": "pt", "source_id": "pt-dom-casmurro-pg55752", "text": "Uma das minhas recordações mais antigas era vel-o montar todas as manhãs a besta que minha mãe lhe deu e que o levava ao escriptorio.", "features": ["chunk_boundaries", "context_dependent_pronoun"]},
+    {"id": "pt-05", "language": "pt", "source_id": "pt-dom-casmurro-pg55752", "text": "Voltarei daqui a tres mezes."},
+    {"id": "pt-06", "language": "pt", "source_id": "pt-dom-casmurro-pg55752", "text": "Voltou dalli a duas semanas, acceitou casa e comida sem outro estipendio, salvo o que quizessem dar por festas."},
+    {"id": "pt-07", "language": "pt", "source_id": "pt-dom-casmurro-pg55752", "text": "Não quiz saber de lagrimas nem da causa que as fazia verter a minha mãe."},
+    {"id": "pt-08", "language": "pt", "source_id": "pt-dom-casmurro-pg55752", "text": "Não disse mal della; ao contrario insinuou-me que podia vir a ser uma moça bonita."},
+    {"id": "pt-09", "language": "pt", "source_id": "pt-dom-casmurro-pg55752", "text": "Ciumes não podiam ser; entre um pirralho da minha edade e uma viuva quarentona não havia logar para ciumes."},
+    {"id": "pt-10", "language": "pt", "source_id": "pt-dom-casmurro-pg55752", "text": "Só então senti que os olhos de prima Justina, quando eu falava, pareciam apalpar-me, ouvir-me, cheirar-me, gostar-me, fazer o officio de todos os sentidos."}
+  ],
+  "directions": [
+    {"source_language": "es", "target_language": "en"},
+    {"source_language": "es", "target_language": "pt"},
+    {"source_language": "en", "target_language": "es"},
+    {"source_language": "en", "target_language": "pt"},
+    {"source_language": "pt", "target_language": "es"},
+    {"source_language": "pt", "target_language": "en"}
+  ],
+  "candidate": {
+    "model_id": "translategemma-4b-it-4bit",
+    "model_revision": "5788ec08c047f3f2e17808101b8d9566ac930d58",
+    "runtime_id": "mlx-swift-lm",
+    "runtime_version": "gemma3"
+  }
+}

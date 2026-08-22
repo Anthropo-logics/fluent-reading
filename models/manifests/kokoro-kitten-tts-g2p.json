@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "id": "kokoro-kitten-tts-g2p",
+  "model_revision": "9c692b92682d959d9013a9cfe6a49541997add18",
+  "artifact_revision": "9c692b92682d959d9013a9cfe6a49541997add18",
+  "purpose": "tts",
+  "authors": ["beshkenadze", "KittenML"],
+  "license_id": "MIT",
+  "usage_restrictions": ["kokoro_runtime_auxiliary_only"],
+  "languages": ["en"],
+  "voices": ["af_heart"],
+  "runtime_id": "mlx-audio-swift",
+  "runtime_version": "v0.1.3",
+  "distribution_status": "pending_review",
+  "artifacts": [
+    {
+      "relative_path": "data/us_bart_config.json",
+      "role": "g2p_config",
+      "source_url": "https://huggingface.co/beshkenadze/kitten-tts-g2p/resolve/9c692b92682d959d9013a9cfe6a49541997add18/us_bart_config.json",
+      "publisher": "beshkenadze",
+      "format": "json",
+      "quantization": "not_applicable",
+      "size_bytes": 1257,
+      "sha256_hex": "8deb3537fb29c63cd9f20d75515ae06e4c92f1b6db0703a2d45bca95b33a53a4"
+    },
+    {
+      "relative_path": "data/us_gold.json",
+      "role": "g2p_lexicon_gold",
+      "source_url": "https://huggingface.co/beshkenadze/kitten-tts-g2p/resolve/9c692b92682d959d9013a9cfe6a49541997add18/us_gold.json",
+      "publisher": "beshkenadze",
+      "format": "json",
+      "quantization": "not_applicable",
+      "size_bytes": 3001196,
+      "sha256_hex": "8507f89840f0813b10cf584740942f58e9cc9ad3660e24088b442ab0a6b126be"
+    },
+    {
+      "relative_path": "data/us_silver.json",
+      "role": "g2p_lexicon_silver",
+      "source_url": "https://huggingface.co/beshkenadze/kitten-tts-g2p/resolve/9c692b92682d959d9013a9cfe6a49541997add18/us_silver.json",
+      "publisher": "beshkenadze",
+      "format": "json",
+      "quantization": "not_applicable",
+      "size_bytes": 3105352,
+      "sha256_hex": "ea0e1abca0c9b18fb0d3402034633a337154a3153e9a9f49f97d668c908e140c"
+    },
+    {
+      "relative_path": "data/us_bart.safetensors",
+      "role": "g2p_weights",
+      "source_url": "https://huggingface.co/beshkenadze/kitten-tts-g2p/resolve/9c692b92682d959d9013a9cfe6a49541997add18/us_bart.safetensors",
+      "publisher": "beshkenadze",
+      "format": "safetensors",
+      "quantization": "published_auxiliary",
+      "size_bytes": 3011692,
+      "sha256_hex": "dc4a02e62d4fcb4bb4097ecf00db89b8e1a12a549a52ab6adfbba220b80a55c5"
+    }
+  ]
+}
