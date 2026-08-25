@@ -3,6 +3,18 @@ import Darwin
 import XCTest
 
 final class ReaderWindowUITests: XCTestCase {
+  override func setUpWithError() throws {
+    try super.setUpWithError()
+    let intentionallyLong =
+      name.contains("testFirstPageColdAndHotBudgetOnReferenceMac")
+      || name.contains("testOpensRealPDFAndNavigatesWithKeyboard")
+    if intentionallyLong {
+      // XCTest arms its UI execution timer before entering the test method. These flows retain ten
+      // measured opens and the complete reader lifecycle, so their allowance must be set here.
+      executionTimeAllowance = 300
+    }
+  }
+
   @MainActor
   func testInitialWindowOffersNativePDFOpeningFromKeyboard() {
     let app = application()

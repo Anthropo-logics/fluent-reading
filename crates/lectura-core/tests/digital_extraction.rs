@@ -1,7 +1,8 @@
 use lectura_core::{
-    ContentClass, ExtractedBlock, PageExtraction, PageProcessingStatus, ProcessingRoute,
-    RequestedUnit, SourceRegion, character_error_rate, measure_digital_block_order,
-    normalize_digital_document, normalize_digital_page, select_processing_route,
+    ContentClass, ExtractedBlock, LayoutRole, NarrationDisposition, PageExtraction,
+    PageProcessingStatus, ProcessingRoute, RequestedUnit, SourceRegion, character_error_rate,
+    measure_digital_block_order, normalize_digital_document, normalize_digital_page,
+    select_processing_route,
 };
 
 /// An upright page. The rotation used to say 90 here while every rectangle below was laid out as
@@ -17,6 +18,437 @@ fn region(y: f64) -> SourceRegion {
         source_to_page_transform: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
         confidence: 1.0,
     }
+}
+
+fn layout_block(
+    id: &str,
+    text: &str,
+    rect: [f64; 4],
+    role: Option<LayoutRole>,
+    confidence: Option<f64>,
+    order: Option<u32>,
+) -> ExtractedBlock {
+    ExtractedBlock {
+        block_id: id.into(),
+        text: text.into(),
+        spoken_text: None,
+        region: SourceRegion {
+            page_index: 2,
+            rect_pdf_points: rect,
+            page_rotation_degrees: 0,
+            source_to_page_transform: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            confidence: 1.0,
+        },
+        confidence: 1.0,
+        layout_role: role,
+        layout_confidence: confidence,
+        layout_order: order,
+        narration_disposition: None,
+        physical_page_index: Some(0),
+    }
+}
+
+fn layout_page(blocks: Vec<ExtractedBlock>) -> PageExtraction {
+    PageExtraction {
+        document_fingerprint: "sha256:layout".into(),
+        generation_id: "generation-layout".into(),
+        page_index: 2,
+        blocks,
+    }
+}
+
+#[test]
+fn layout_order_wins_for_a_covered_page_and_orders_geometry_within_one_region() {
+    let normalized = normalize_digital_page(
+        &layout_page(vec![
+            layout_block(
+                "left-top",
+                "Left top.",
+                [20.0, 600.0, 180.0, 12.0],
+                Some(LayoutRole::Text),
+                Some(0.9),
+                Some(1),
+            ),
+            layout_block(
+                "right-bottom",
+                "Right bottom.",
+                [260.0, 560.0, 180.0, 12.0],
+                Some(LayoutRole::Text),
+                Some(0.9),
+                Some(0),
+            ),
+            layout_block(
+                "left-bottom",
+                "Left bottom.",
+                [20.0, 550.0, 180.0, 12.0],
+                Some(LayoutRole::Text),
+                Some(0.9),
+                Some(1),
+            ),
+            layout_block(
+                "right-top",
+                "Right top.",
+                [260.0, 610.0, 180.0, 12.0],
+                Some(LayoutRole::Text),
+                Some(0.9),
+                Some(0),
+            ),
+        ]),
+        "en",
+        RequestedUnit::Paragraph,
+    );
+
+    assert_eq!(
+        normalized
+            .units
+            .iter()
+            .flat_map(|unit| unit.source_block_ids.iter().map(String::as_str))
+            .collect::<Vec<_>>(),
+        ["right-top", "right-bottom", "left-top", "left-bottom"]
+    );
+    assert!(normalized.units.iter().all(|unit| {
+        unit.decision_trace
+            .iter()
+            .any(|decision| decision.rule == "ml_layout_order")
+    }));
+}
+
+#[test]
+fn layout_order_is_ignored_below_page_coverage_and_no_block_is_lost() {
+    let normalized = normalize_digital_page(
+        &layout_page(vec![
+            layout_block(
+                "left-top",
+                "Left top.",
+                [20.0, 600.0, 180.0, 12.0],
+                Some(LayoutRole::Text),
+                Some(0.9),
+                Some(1),
+            ),
+            layout_block(
+                "right-top",
+                "Right top.",
+                [260.0, 610.0, 180.0, 12.0],
+                Some(LayoutRole::Text),
+                Some(0.9),
+                Some(0),
+            ),
+            layout_block(
+                "left-bottom",
+                "Left bottom.",
+                [20.0, 550.0, 180.0, 12.0],
+                None,
+                None,
+                None,
+            ),
+            layout_block(
+                "right-bottom",
+                "Right bottom.",
+                [260.0, 560.0, 180.0, 12.0],
+                None,
+                None,
+                None,
+            ),
+        ]),
+        "en",
+        RequestedUnit::Paragraph,
+    );
+
+    assert_eq!(
+        normalized
+            .units
+            .iter()
+            .flat_map(|unit| unit.source_block_ids.iter().map(String::as_str))
+            .collect::<Vec<_>>(),
+        ["left-top", "left-bottom", "right-top", "right-bottom"]
+    );
+    assert_eq!(
+        normalized
+            .units
+            .iter()
+            .map(|unit| unit.source_block_ids.len())
+            .sum::<usize>(),
+        4
+    );
+    assert!(normalized.units.iter().all(|unit| {
+        unit.decision_trace
+            .iter()
+            .all(|decision| decision.rule != "ml_layout_order")
+    }));
+}
+
+#[test]
+fn layout_never_roles_stay_visible_with_explicit_non_narrable_policy() {
+    let cases = [
+        (LayoutRole::Header, ContentClass::Unsupported),
+        (LayoutRole::Footer, ContentClass::Unsupported),
+        (LayoutRole::Footnote, ContentClass::Note),
+        (LayoutRole::Number, ContentClass::Unsupported),
+    ];
+
+    for (role, expected_class) in cases {
+        let normalized = normalize_digital_page(
+            &layout_page(vec![layout_block(
+                "kept",
+                "42",
+                [20.0, 600.0, 180.0, 12.0],
+                Some(role),
+                Some(0.9),
+                Some(0),
+            )]),
+            "en",
+            RequestedUnit::Paragraph,
+        );
+        let unit = &normalized.units[0];
+        assert_eq!(unit.source_block_ids, ["kept"], "{role:?} was omitted");
+        assert_eq!(unit.content_class, expected_class, "{role:?}");
+        assert_eq!(
+            unit.narration_disposition,
+            Some(NarrationDisposition::Never)
+        );
+        assert!(
+            unit.decision_trace
+                .iter()
+                .any(|decision| decision.rule == format!("ml_layout_role_{}", role.as_str()))
+        );
+        assert!(
+            unit.decision_trace
+                .iter()
+                .any(|decision| decision.rule == "layout_policy_never")
+        );
+    }
+}
+
+#[test]
+fn layout_never_folio_is_not_absorbed_into_adjacent_automatic_text() {
+    let normalized = normalize_digital_page(
+        &layout_page(vec![
+            layout_block(
+                "body",
+                "The final line of the page",
+                [20.0, 600.0, 300.0, 15.0],
+                Some(LayoutRole::Text),
+                Some(0.9),
+                Some(0),
+            ),
+            layout_block(
+                "folio",
+                "221",
+                [320.0, 600.0, 20.0, 15.0],
+                Some(LayoutRole::Number),
+                Some(0.9),
+                Some(1),
+            ),
+        ]),
+        "en",
+        RequestedUnit::Paragraph,
+    );
+
+    assert_eq!(normalized.units.len(), 2);
+    let folio = normalized
+        .units
+        .iter()
+        .find(|unit| unit.source_block_ids == ["folio"])
+        .expect("the folio stays an independently auditable unit");
+    assert_eq!(
+        folio.narration_disposition,
+        Some(NarrationDisposition::Never)
+    );
+    assert!(
+        normalized
+            .units
+            .iter()
+            .filter(|unit| { unit.narration_disposition == Some(NarrationDisposition::Automatic) })
+            .all(|unit| !unit.source_block_ids.iter().any(|id| id == "folio"))
+    );
+}
+
+#[test]
+fn layout_on_demand_roles_keep_their_safe_content_classes() {
+    let cases = [
+        (LayoutRole::Table, ContentClass::Table),
+        (LayoutRole::Formula, ContentClass::Formula),
+        (LayoutRole::Image, ContentClass::Unsupported),
+        (LayoutRole::ReferenceContent, ContentClass::Unsupported),
+    ];
+
+    for (role, expected_class) in cases {
+        let normalized = normalize_digital_page(
+            &layout_page(vec![layout_block(
+                "kept",
+                "Ordinary words.",
+                [20.0, 600.0, 180.0, 12.0],
+                Some(role),
+                Some(0.9),
+                Some(0),
+            )]),
+            "en",
+            RequestedUnit::Paragraph,
+        );
+        let unit = &normalized.units[0];
+        assert_eq!(unit.content_class, expected_class, "{role:?}");
+        assert_eq!(
+            unit.narration_disposition,
+            Some(NarrationDisposition::OnDemand)
+        );
+        assert!(
+            unit.decision_trace
+                .iter()
+                .any(|decision| decision.rule == "layout_policy_on_demand")
+        );
+    }
+}
+
+#[test]
+fn layout_automatic_roles_map_titles_to_headings_and_other_text_to_prose() {
+    let cases = [
+        (LayoutRole::DocumentTitle, ContentClass::Heading),
+        (LayoutRole::FigureTitle, ContentClass::Heading),
+        (LayoutRole::ParagraphTitle, ContentClass::Heading),
+        (LayoutRole::Text, ContentClass::Prose),
+        (LayoutRole::Content, ContentClass::Prose),
+    ];
+
+    for (role, expected_class) in cases {
+        let normalized = normalize_digital_page(
+            &layout_page(vec![layout_block(
+                "kept",
+                "Ordinary words.",
+                [20.0, 600.0, 180.0, 12.0],
+                Some(role),
+                Some(0.9),
+                Some(0),
+            )]),
+            "en",
+            RequestedUnit::Paragraph,
+        );
+        let unit = &normalized.units[0];
+        assert_eq!(unit.content_class, expected_class, "{role:?}");
+        assert_eq!(
+            unit.narration_disposition,
+            Some(NarrationDisposition::Automatic)
+        );
+        assert!(
+            unit.decision_trace
+                .iter()
+                .any(|decision| decision.rule == "layout_policy_automatic")
+        );
+    }
+}
+
+#[test]
+fn uncertain_layout_metadata_uses_the_existing_audible_heuristic() {
+    let cases = [
+        (Some(LayoutRole::Unknown), Some(0.99)),
+        (None, None),
+        (Some(LayoutRole::Header), Some(0.29)),
+    ];
+
+    for (role, confidence) in cases {
+        let normalized = normalize_digital_page(
+            &layout_page(vec![layout_block(
+                "kept",
+                "Ordinary audible prose.",
+                [20.0, 600.0, 180.0, 12.0],
+                role,
+                confidence,
+                Some(0),
+            )]),
+            "en",
+            RequestedUnit::Paragraph,
+        );
+        let unit = &normalized.units[0];
+        assert_eq!(unit.content_class, ContentClass::Prose);
+        assert_eq!(unit.narration_disposition, None);
+        assert!(
+            unit.decision_trace
+                .iter()
+                .all(|decision| !decision.rule.starts_with("ml_layout_role_")
+                    && !decision.rule.starts_with("layout_policy_"))
+        );
+    }
+}
+
+#[test]
+fn valid_automatic_layout_overrides_every_legacy_heuristic_classification() {
+    let cases = [
+        ("name | value", 1.0),
+        ("x = y", 1.0),
+        ("Footnote source detail", 1.0),
+        ("uncertain extraction", 0.4),
+    ];
+
+    for (text, extraction_confidence) in cases {
+        let mut block = layout_block(
+            "kept",
+            text,
+            [20.0, 600.0, 180.0, 12.0],
+            Some(LayoutRole::Text),
+            Some(0.9),
+            Some(0),
+        );
+        block.confidence = extraction_confidence;
+        let normalized =
+            normalize_digital_page(&layout_page(vec![block]), "en", RequestedUnit::Paragraph);
+        let unit = &normalized.units[0];
+        assert_eq!(unit.content_class, ContentClass::Prose, "{text}");
+        assert_eq!(
+            unit.narration_disposition,
+            Some(NarrationDisposition::Automatic),
+            "{text}"
+        );
+        assert!(
+            unit.decision_trace
+                .iter()
+                .any(|decision| decision.rule == "ml_layout_role_text")
+        );
+        assert!(
+            unit.decision_trace
+                .iter()
+                .any(|decision| decision.rule == "layout_policy_automatic")
+        );
+    }
+}
+
+#[test]
+fn layout_group_policy_requires_agreement_or_a_point_ten_confidence_margin() {
+    let normalize = |second_role, second_confidence| {
+        normalize_digital_page(
+            &layout_page(vec![
+                layout_block(
+                    "first",
+                    "First line that reaches the margin",
+                    [20.0, 600.0, 300.0, 15.0],
+                    Some(LayoutRole::Image),
+                    Some(0.90),
+                    Some(0),
+                ),
+                layout_block(
+                    "second",
+                    "and the second line completes it.",
+                    [20.0, 585.0, 300.0, 15.0],
+                    Some(second_role),
+                    Some(second_confidence),
+                    Some(0),
+                ),
+            ]),
+            "en",
+            RequestedUnit::Paragraph,
+        )
+    };
+
+    let ambiguous = normalize(LayoutRole::Text, 0.85);
+    assert_eq!(ambiguous.units.len(), 1);
+    assert_eq!(ambiguous.units[0].content_class, ContentClass::Prose);
+    assert_eq!(ambiguous.units[0].narration_disposition, None);
+
+    let decisive = normalize(LayoutRole::Text, 0.80);
+    assert_eq!(decisive.units.len(), 1);
+    assert_eq!(decisive.units[0].content_class, ContentClass::Unsupported);
+    assert_eq!(
+        decisive.units[0].narration_disposition,
+        Some(NarrationDisposition::OnDemand)
+    );
 }
 
 #[test]
@@ -54,6 +486,11 @@ fn paragraph_and_sentence_units_have_stable_ids_and_round_trip_regions() {
                     ..region(10.0)
                 },
                 confidence: 0.98,
+                layout_role: None,
+                layout_confidence: None,
+                layout_order: None,
+                narration_disposition: None,
+                physical_page_index: None,
             },
             ExtractedBlock {
                 block_id: "block-a".into(),
@@ -61,6 +498,11 @@ fn paragraph_and_sentence_units_have_stable_ids_and_round_trip_regions() {
                 spoken_text: None,
                 region: region(40.0),
                 confidence: 0.99,
+                layout_role: None,
+                layout_confidence: None,
+                layout_order: None,
+                narration_disposition: None,
+                physical_page_index: None,
             },
         ],
     };
@@ -102,6 +544,11 @@ fn a_paragraph_survives_the_sentences_that_end_on_a_line_break() {
             ..region(y)
         },
         confidence: 1.0,
+        layout_role: None,
+        layout_confidence: None,
+        layout_order: None,
+        narration_disposition: None,
+        physical_page_index: None,
     };
     let page = PageExtraction {
         document_fingerprint: "sha256:reflow".into(),
@@ -175,6 +622,11 @@ fn an_indented_first_line_and_a_wider_gap_still_open_a_new_paragraph() {
             ..region(y)
         },
         confidence: 1.0,
+        layout_role: None,
+        layout_confidence: None,
+        layout_order: None,
+        narration_disposition: None,
+        physical_page_index: None,
     };
     let page = PageExtraction {
         document_fingerprint: "sha256:breaks".into(),
@@ -257,6 +709,11 @@ fn repeated_headers_and_footers_are_removed_with_explicit_trace() {
                         ..region(90.0)
                     },
                     confidence: 1.0,
+                    layout_role: None,
+                    layout_confidence: None,
+                    layout_order: None,
+                    narration_disposition: None,
+                    physical_page_index: None,
                 },
                 ExtractedBlock {
                     block_id: format!("body-{page_index}"),
@@ -267,6 +724,11 @@ fn repeated_headers_and_footers_are_removed_with_explicit_trace() {
                         ..region(50.0)
                     },
                     confidence: 1.0,
+                    layout_role: None,
+                    layout_confidence: None,
+                    layout_order: None,
+                    narration_disposition: None,
+                    physical_page_index: None,
                 },
                 ExtractedBlock {
                     block_id: format!("footer-{page_index}"),
@@ -277,6 +739,11 @@ fn repeated_headers_and_footers_are_removed_with_explicit_trace() {
                         ..region(10.0)
                     },
                     confidence: 1.0,
+                    layout_role: None,
+                    layout_confidence: None,
+                    layout_order: None,
+                    narration_disposition: None,
+                    physical_page_index: None,
                 },
             ],
         })
@@ -302,6 +769,11 @@ fn normalization_traces_hyphen_join_and_empty_pages_fail_locally() {
             spoken_text: None,
             region: region(10.0),
             confidence: 0.9,
+            layout_role: None,
+            layout_confidence: None,
+            layout_order: None,
+            narration_disposition: None,
+            physical_page_index: None,
         }],
     };
     let result = normalize_digital_page(&page, "es", RequestedUnit::Paragraph);
@@ -338,6 +810,11 @@ fn normalization_traces_hyphen_join_and_empty_pages_fail_locally() {
                 spoken_text: None,
                 region: region(10.0),
                 confidence: 1.0,
+                layout_role: None,
+                layout_confidence: None,
+                layout_order: None,
+                narration_disposition: None,
+                physical_page_index: None,
             }],
             ..page
         },
@@ -393,6 +870,11 @@ fn complex_and_low_confidence_content_is_never_silent_prose() {
                 spoken_text: None,
                 region: region(30.0),
                 confidence: 1.0,
+                layout_role: None,
+                layout_confidence: None,
+                layout_order: None,
+                narration_disposition: None,
+                physical_page_index: None,
             },
             ExtractedBlock {
                 block_id: "uncertain".into(),
@@ -400,6 +882,11 @@ fn complex_and_low_confidence_content_is_never_silent_prose() {
                 spoken_text: None,
                 region: region(10.0),
                 confidence: 0.4,
+                layout_role: None,
+                layout_confidence: None,
+                layout_order: None,
+                narration_disposition: None,
+                physical_page_index: None,
             },
         ],
     };
@@ -424,6 +911,11 @@ fn multicolumn_order_route_notes_and_unreliable_geometry_remain_explicit() {
             ..region(y)
         },
         confidence: 1.0,
+        layout_role: None,
+        layout_confidence: None,
+        layout_order: None,
+        narration_disposition: None,
+        physical_page_index: None,
     };
     let page = PageExtraction {
         document_fingerprint: "sha256:columns".into(),
@@ -471,6 +963,11 @@ fn multicolumn_order_route_notes_and_unreliable_geometry_remain_explicit() {
                         ..region(10.0)
                     },
                     confidence: 1.0,
+                    layout_role: None,
+                    layout_confidence: None,
+                    layout_order: None,
+                    narration_disposition: None,
+                    physical_page_index: None,
                 },
             ],
             ..page
@@ -503,6 +1000,11 @@ fn printed_page_folio_is_dropped_with_an_auditable_trace_but_years_in_prose_surv
                 spoken_text: None,
                 region: region(400.0),
                 confidence: 0.95,
+                layout_role: None,
+                layout_confidence: None,
+                layout_order: None,
+                narration_disposition: None,
+                physical_page_index: None,
             },
             ExtractedBlock {
                 block_id: "b2".into(),
@@ -510,6 +1012,11 @@ fn printed_page_folio_is_dropped_with_an_auditable_trace_but_years_in_prose_surv
                 spoken_text: None,
                 region: region(40.0),
                 confidence: 0.95,
+                layout_role: None,
+                layout_confidence: None,
+                layout_order: None,
+                narration_disposition: None,
+                physical_page_index: None,
             },
         ],
     };
@@ -555,6 +1062,11 @@ fn placed_block(id: &str, text: &str, region: SourceRegion) -> ExtractedBlock {
         spoken_text: None,
         region,
         confidence: 1.0,
+        layout_role: None,
+        layout_confidence: None,
+        layout_order: None,
+        narration_disposition: None,
+        physical_page_index: None,
     }
 }
 
@@ -1037,6 +1549,11 @@ fn sentence_units_keep_their_own_spoken_projection() {
             ),
             region: placed(75.0, 600.0, 380.0, 12.0),
             confidence: 1.0,
+            layout_role: None,
+            layout_confidence: None,
+            layout_order: None,
+            narration_disposition: None,
+            physical_page_index: None,
         }],
     };
 
@@ -1050,6 +1567,36 @@ fn sentence_units_keep_their_own_spoken_projection() {
         [
             "La fuente confirmó el dato.",
             "El informe conservó el año 2011."
+        ]
+    );
+}
+
+#[test]
+fn sentence_units_preserve_abbreviations_and_numeric_punctuation() {
+    let page = PageExtraction {
+        document_fingerprint: "sha256:natural-sentences".into(),
+        generation_id: "generation-natural-sentences".into(),
+        page_index: 0,
+        blocks: vec![placed_block(
+            "body",
+            "Dr. Rivera citó el art. 59.1. El indicador fue 59.1%. Otro valor fue 20,5%. Fin.",
+            placed(75.0, 600.0, 380.0, 12.0),
+        )],
+    };
+
+    let normalized = normalize_digital_page(&page, "es", RequestedUnit::Sentence);
+
+    assert_eq!(
+        normalized
+            .units
+            .iter()
+            .map(|unit| unit.text.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "Dr. Rivera citó el art. 59.1.",
+            "El indicador fue 59.1%.",
+            "Otro valor fue 20,5%.",
+            "Fin.",
         ]
     );
 }
@@ -1077,6 +1624,11 @@ fn a_page_tagged_ninety_degrees_is_read_along_its_own_axis() {
             confidence: 1.0,
         },
         confidence: 1.0,
+        layout_role: None,
+        layout_confidence: None,
+        layout_order: None,
+        narration_disposition: None,
+        physical_page_index: None,
     };
     // Deliberately handed over shuffled: what has to come out in reading order is the geometry,
     // not the order the blocks happened to arrive in.
@@ -1167,6 +1719,11 @@ fn a_page_tagged_two_hundred_and_seventy_degrees_reverses_both_axes() {
             confidence: 1.0,
         },
         confidence: 1.0,
+        layout_role: None,
+        layout_confidence: None,
+        layout_order: None,
+        narration_disposition: None,
+        physical_page_index: None,
     };
     let page = PageExtraction {
         document_fingerprint: "sha256:turned".into(),
@@ -1203,6 +1760,11 @@ fn a_rotation_that_is_not_a_quarter_turn_changes_nothing() {
             confidence: 1.0,
         },
         confidence: 1.0,
+        layout_role: None,
+        layout_confidence: None,
+        layout_order: None,
+        narration_disposition: None,
+        physical_page_index: None,
     };
     let page = PageExtraction {
         document_fingerprint: "sha256:skewed".into(),
@@ -1238,6 +1800,11 @@ fn a_negative_rotation_means_the_same_quarter_turn() {
             confidence: 1.0,
         },
         confidence: 1.0,
+        layout_role: None,
+        layout_confidence: None,
+        layout_order: None,
+        narration_disposition: None,
+        physical_page_index: None,
     };
     for degrees in [270_i16, -90_i16] {
         let page = PageExtraction {
@@ -1327,6 +1894,39 @@ fn a_chapter_title_set_on_two_lines_arrives_as_one_heading() {
             .any(|unit| unit.content_class == ContentClass::Prose
                 && unit.text.starts_with("Desde la parte")),
         "el cuerpo de la página no se absorbe en el título"
+    );
+}
+
+#[test]
+fn a_heuristic_heading_inherits_automatic_policy_from_its_ml_continuation() {
+    let mut page = chapter_opening("y la blanca", 20.0);
+    let continuation = page
+        .blocks
+        .iter_mut()
+        .find(|block| block.block_id == "title-b")
+        .expect("the literal fixture has a continuation");
+    continuation.layout_role = Some(LayoutRole::Text);
+    continuation.layout_confidence = Some(0.9);
+    continuation.layout_order = Some(1);
+    continuation.physical_page_index = Some(0);
+
+    let normalized = normalize_digital_page(&page, "es", RequestedUnit::Paragraph);
+    let heading = normalized
+        .units
+        .iter()
+        .find(|unit| unit.content_class == ContentClass::Heading)
+        .expect("the two title lines merge into one heading");
+
+    assert_eq!(heading.source_block_ids, ["title-a", "title-b"]);
+    assert_eq!(
+        heading.narration_disposition,
+        Some(NarrationDisposition::Automatic)
+    );
+    assert!(
+        heading
+            .decision_trace
+            .iter()
+            .any(|decision| decision.rule == "layout_policy_automatic")
     );
 }
 

@@ -4,6 +4,44 @@ import XCTest
 @testable import MacPlatform
 
 final class LFContractTests: XCTestCase {
+  func testReadingUnitNarrationDispositionRoundTripsAndExplicitValuesWin() throws {
+    for disposition in [NarrationDisposition.automatic, .onDemand, .never] {
+      let unit = try decodeReadingUnit(contentClass: "prose", disposition: disposition.rawValue)
+      XCTAssertEqual(unit.narrationDisposition, disposition)
+      XCTAssertEqual(unit.resolvedNarrationDisposition, disposition)
+      let encoded = try XCTUnwrap(
+        JSONSerialization.jsonObject(with: JSONEncoder().encode(unit)) as? [String: Any])
+      XCTAssertEqual(encoded["narration_disposition"] as? String, disposition.rawValue)
+    }
+  }
+
+  func testReadingUnitNarrationDispositionUsesLegacyContentClassFallbackWhenAbsent() throws {
+    let cases: [(String, NarrationDisposition)] = [
+      ("prose", .automatic), ("heading", .automatic),
+      ("table", .onDemand), ("formula", .onDemand),
+      ("note", .never), ("unsupported", .never),
+    ]
+    for (contentClass, expected) in cases {
+      let unit = try decodeReadingUnit(contentClass: contentClass, disposition: nil)
+      XCTAssertNil(unit.narrationDisposition)
+      XCTAssertEqual(unit.resolvedNarrationDisposition, expected, contentClass)
+      let encoded = try XCTUnwrap(
+        JSONSerialization.jsonObject(with: JSONEncoder().encode(unit)) as? [String: Any])
+      XCTAssertNil(encoded["narration_disposition"], contentClass)
+    }
+  }
+
+  func testNarrationSelectionExcludesExplicitNeverProseAndKeepsLegacyProseFallback() throws {
+    let explicitNever = try decodeReadingUnit(contentClass: "prose", disposition: "never")
+    let legacyProse = try decodeReadingUnit(contentClass: "prose", disposition: nil)
+    let units = [explicitNever, legacyProse]
+
+    XCTAssertEqual(units.filter { $0.isNarrable }.count, 1)
+    XCTAssertTrue(legacyProse.isNarrable)
+    XCTAssertFalse(explicitNever.isNarrable)
+    XCTAssertEqual(units.filter { !$0.isNarrable }.count, 1)
+  }
+
   func testCompletedFixtureDecodesWithoutLosingContractFields() throws {
     let event = try JSONDecoder().decode(
       LFEvent.self,
@@ -372,5 +410,36 @@ final class LFContractTests: XCTestCase {
     let bundle = Bundle(for: Self.self)
     let url = try XCTUnwrap(bundle.url(forResource: name, withExtension: "json"))
     return try Data(contentsOf: url)
+  }
+
+  private func decodeReadingUnit(contentClass: String, disposition: String?) throws
+    -> LFReadingUnit
+  {
+    var object: [String: Any] = [
+      "unit_id": "unit_layout",
+      "kind": "paragraph",
+      "content_class": contentClass,
+      "processing_route": "direct_text",
+      "order_key": ["primary_page_index": 0, "local_index": 0],
+      "text": "Visible text",
+      "spoken_text": "Spoken text",
+      "source_regions": [
+        [
+          "page_index": 0,
+          "rect_pdf_points": [0.0, 0.0, 100.0, 20.0],
+          "page_rotation_degrees": 0,
+          "source_to_page_transform": [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+          "confidence": 1.0,
+        ]
+      ],
+      "source_block_ids": ["block_layout"],
+      "parent_unit_id": NSNull(),
+      "confidence": 1.0,
+      "decision_trace": [],
+    ]
+    if let disposition { object["narration_disposition"] = disposition }
+    return try JSONDecoder().decode(
+      LFReadingUnit.self,
+      from: JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]))
   }
 }

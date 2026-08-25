@@ -300,6 +300,129 @@ fn normalizes_adapter_blocks_into_stable_units_at_the_core_boundary() {
         "join_line_end_hyphen"
     );
     assert_eq!(first["record"]["route"], "direct_text");
+    assert!(first["units"][0].get("narration_disposition").is_none());
+}
+
+#[test]
+fn layout_contract_fields_are_optional_and_narration_disposition_round_trips() {
+    let commands: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/lf-v1/commands.schema.json"
+    ))
+    .expect("commands schema must be JSON");
+    let block = &commands["$defs"]["extracted_block"];
+    assert_eq!(block["additionalProperties"], false);
+    assert_eq!(block["properties"]["layout_role"]["type"], "string");
+    assert_eq!(block["properties"]["layout_confidence"]["type"], "number");
+    assert_eq!(block["properties"]["layout_order"]["type"], "integer");
+    assert_eq!(
+        block["properties"]["narration_disposition"]["enum"],
+        json!(["automatic", "on_demand", "never"])
+    );
+    assert_eq!(
+        block["properties"]["physical_page_index"]["type"],
+        "integer"
+    );
+    let required = block["required"].as_array().expect("required block fields");
+    assert!(!required.contains(&json!("layout_role")));
+    assert!(!required.contains(&json!("narration_disposition")));
+
+    let reading: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/lf-v1/reading-page.schema.json"
+    ))
+    .expect("reading schema must be JSON");
+    assert_eq!(
+        reading["properties"]["units"]["items"]["properties"]["narration_disposition"]["enum"],
+        json!(["automatic", "on_demand", "never"])
+    );
+    assert!(
+        !reading["properties"]["units"]["items"]["required"]
+            .as_array()
+            .expect("required reading unit fields")
+            .contains(&json!("narration_disposition"))
+    );
+
+    let request = json!({
+        "schema_version": 1,
+        "request_id": "req_layout_contract",
+        "command": "normalize_page",
+        "payload": {
+            "page": {
+                "document_fingerprint": "abc123",
+                "generation_id": "generation_abc123",
+                "page_index": 0,
+                "blocks": [{
+                    "block_id": "image",
+                    "text": "Figure content",
+                    "region": {
+                        "page_index": 0,
+                        "rect_pdf_points": [0.0, 0.0, 100.0, 20.0],
+                        "page_rotation_degrees": 0,
+                        "source_to_page_transform": [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+                        "confidence": 1.0
+                    },
+                    "confidence": 1.0,
+                    "layout_role": "image",
+                    "layout_confidence": 0.9,
+                    "layout_order": 0,
+                    "narration_disposition": "automatic",
+                    "physical_page_index": 0
+                }]
+            },
+            "language": "en",
+            "requested_unit": "paragraph",
+            "route": "direct_text",
+            "adapter_status": "completed"
+        }
+    });
+    let event = handle_request(request.to_string().as_bytes()).expect("layout fields are valid");
+    let result = serde_json::to_value(event.result).expect("result must serialize");
+    assert_eq!(result["units"][0]["content_class"], "unsupported");
+    assert_eq!(result["units"][0]["narration_disposition"], "on_demand");
+}
+
+#[test]
+fn legacy_reading_unit_satisfies_the_closed_lf_v1_schema_without_spoken_or_layout_fields() {
+    let schema: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/lf-v1/reading-page.schema.json"
+    ))
+    .expect("reading schema must be JSON");
+    let unit_schema = &schema["properties"]["units"]["items"];
+    let legacy = json!({
+        "unit_id": "unit_legacy",
+        "kind": "paragraph",
+        "content_class": "prose",
+        "processing_route": "direct_text",
+        "order_key": {"primary_page_index": 0, "local_index": 0},
+        "text": "Legacy visible text.",
+        "source_regions": [{
+            "page_index": 0,
+            "rect_pdf_points": [0.0, 0.0, 100.0, 20.0],
+            "page_rotation_degrees": 0,
+            "source_to_page_transform": [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            "confidence": 1.0
+        }],
+        "source_block_ids": ["block_legacy"],
+        "parent_unit_id": null,
+        "confidence": 1.0,
+        "decision_trace": []
+    });
+
+    for field in unit_schema["required"]
+        .as_array()
+        .expect("unit required fields")
+    {
+        let field = field.as_str().expect("required field name");
+        assert!(
+            legacy.get(field).is_some(),
+            "legacy unit lacks required {field}"
+        );
+    }
+    for field in legacy.as_object().expect("legacy unit object").keys() {
+        assert!(
+            unit_schema["properties"].get(field).is_some(),
+            "closed unit schema rejects {field}"
+        );
+    }
 }
 
 #[test]

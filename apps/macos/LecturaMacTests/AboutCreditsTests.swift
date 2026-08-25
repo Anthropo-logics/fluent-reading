@@ -1,3 +1,4 @@
+import CryptoKit
 import MacPlatform
 import XCTest
 
@@ -11,6 +12,7 @@ final class AboutCreditsTests: XCTestCase {
   private static let distributedManifestIDs = [
     "kokoro-82m-4bit", "translategemma-4b-it-4bit", "kokoro-ipa-lexicons-es-pt",
   ]
+  private static let layoutManifestID = "pp-doclayout-v3-coreml"
 
   private static var repositoryRoot: URL {
     URL(fileURLWithPath: #filePath)
@@ -42,14 +44,84 @@ final class AboutCreditsTests: XCTestCase {
     for credit in credits {
       let data = try Data(contentsOf: Self.manifestURL(credit.id))
       let manifest = try ModelPackageInstaller.decodeManifest(data)
-      XCTAssertEqual(credit.manifest.licenseId, manifest.licenseId, credit.id)
-      XCTAssertEqual(credit.manifest.authors, manifest.authors, credit.id)
-      XCTAssertEqual(credit.manifest.modelRevision, manifest.modelRevision, credit.id)
-      XCTAssertEqual(credit.manifest.usageRestrictions, manifest.usageRestrictions, credit.id)
-      XCTAssertFalse(credit.manifest.licenseId.isEmpty, credit.id)
-      XCTAssertFalse(credit.manifest.authors.isEmpty, credit.id)
+      XCTAssertEqual(credit.licenseId, manifest.licenseId, credit.id)
+      XCTAssertEqual(credit.authors, manifest.authors, credit.id)
+      XCTAssertEqual(credit.modelRevision, manifest.modelRevision, credit.id)
+      XCTAssertEqual(credit.usageRestrictions, manifest.usageRestrictions, credit.id)
+      XCTAssertEqual(credit.purpose, manifest.purpose, credit.id)
+      XCTAssertFalse(credit.licenseId.isEmpty, credit.id)
+      XCTAssertFalse(credit.authors.isEmpty, credit.id)
       XCTAssertFalse(credit.isInstalled, "no package exists under a directory just invented")
     }
+  }
+
+  func testLayoutCreditComesFromItsPackagingManifestAndSiblingModel() throws {
+    let root = URL(fileURLWithPath: NSTemporaryDirectory())
+      .appendingPathComponent("about-layout-credit-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let manifest = root.appendingPathComponent("pp-doclayout-v3-coreml.json")
+    try FileManager.default.copyItem(
+      at: Self.manifestURL(Self.layoutManifestID), to: manifest)
+    let model = root.appendingPathComponent("PPDocLayoutV3-fp32.mlmodelc", isDirectory: true)
+    try FileManager.default.createDirectory(at: model, withIntermediateDirectories: true)
+
+    let installed = try XCTUnwrap(
+      ModelCredits.credits(
+        manifestURLs: [manifest], storageRoot: nil,
+        containerRoot: root.appendingPathComponent("unused")
+      )
+      .first)
+    XCTAssertEqual(installed.id, Self.layoutManifestID)
+    XCTAssertEqual(installed.purpose, "document_layout")
+    XCTAssertEqual(installed.authors, ["PaddlePaddle"])
+    XCTAssertEqual(installed.licenseId, "Apache-2.0")
+    XCTAssertEqual(installed.modelRevision, "97d101e6db2642e162a1d05392d1b0231c91033e")
+    XCTAssertTrue(installed.usageRestrictions.isEmpty)
+    XCTAssertTrue(installed.isInstalled)
+
+    try FileManager.default.removeItem(at: model)
+    XCTAssertEqual(
+      ModelCredits.credits(
+        manifestURLs: [manifest], storageRoot: nil,
+        containerRoot: root.appendingPathComponent("unused")
+      )
+      .first?.isInstalled,
+      false)
+  }
+
+  func testLayoutModelShipsItsExactApacheLicenseAndRecordsUpstreamNoticeAudit() throws {
+    let data = try Data(contentsOf: Self.manifestURL(Self.layoutManifestID))
+    let manifest = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: data) as? [String: Any])
+    let resource = try XCTUnwrap(manifest["license_text_resource"] as? String)
+    let licenseURL = Self.repositoryRoot.appendingPathComponent("models/licenses")
+      .appendingPathComponent(resource)
+    let license = try Data(contentsOf: licenseURL)
+    let digest = SHA256.hash(data: license).map { String(format: "%02x", $0) }.joined()
+
+    XCTAssertEqual(resource, "PPDocLayoutV3-Apache-2.0.txt")
+    XCTAssertEqual(digest, manifest["license_text_sha256"] as? String)
+    XCTAssertEqual(digest, "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30")
+    XCTAssertEqual(manifest["source_notice_present"] as? Bool, false)
+    XCTAssertEqual(
+      manifest["source_license_evidence_url"] as? String,
+      "https://huggingface.co/PaddlePaddle/PP-DocLayoutV3_safetensors/blob/97d101e6db2642e162a1d05392d1b0231c91033e/README.md"
+    )
+    XCTAssertEqual(
+      manifest["source_notice_audit_url"] as? String,
+      "https://huggingface.co/api/models/PaddlePaddle/PP-DocLayoutV3_safetensors/revision/97d101e6db2642e162a1d05392d1b0231c91033e"
+    )
+    let text = String(decoding: license, as: UTF8.self)
+    XCTAssertTrue(text.contains("Apache License"))
+    XCTAssertTrue(text.contains("Version 2.0, January 2004"))
+    XCTAssertTrue(text.contains("END OF TERMS AND CONDITIONS"))
+    XCTAssertTrue(text.contains("APPENDIX: How to apply the Apache License to your work."))
+
+    let project = try String(
+      contentsOf: Self.repositoryRoot.appendingPathComponent(
+        "apps/macos/LecturaFluida.xcodeproj/project.pbxproj"), encoding: .utf8)
+    XCTAssertTrue(project.contains("PPDocLayoutV3-Apache-2.0.txt in Resources"))
   }
 
   /// A JSON resource that is not a model manifest — a contract fixture, say — must not turn into a
@@ -116,6 +188,17 @@ final class AboutCreditsTests: XCTestCase {
           "NOTICE omits the declared restriction \(restriction) of \(id)")
       }
     }
+
+    let layout = try XCTUnwrap(
+      ModelCredits.credits(
+        manifestURLs: [Self.manifestURL(Self.layoutManifestID)], storageRoot: nil,
+        containerRoot: URL(fileURLWithPath: NSTemporaryDirectory())
+      )
+      .first)
+    XCTAssertTrue(notice.contains("PP-DocLayoutV3"))
+    XCTAssertTrue(notice.contains(layout.authors[0]))
+    XCTAssertTrue(notice.contains(layout.licenseId))
+    XCTAssertTrue(notice.contains(layout.modelRevision))
   }
 
   /// NFR11: the phonemisation engine is GPL-3.0-or-later and `embed-runtimes.sh` copies it into the

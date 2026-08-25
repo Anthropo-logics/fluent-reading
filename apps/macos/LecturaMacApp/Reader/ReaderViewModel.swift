@@ -262,12 +262,10 @@ final class ReaderViewModel {
 
   /// Automatic audio follows the same policy on screen and in an exported audiobook. Notes remain
   /// visible and traceable, but neither route inserts them into the argument being read.
-  static let exportableContentClasses: Set<String> = ["prose", "heading"]
-
   private var exportReadyUnitsWithPages: [(unit: LFReadingUnit, pageIndex: Int)] {
     normalizedPages.keys.sorted().flatMap { key in
       (normalizedPages[key]?.units ?? [])
-        .filter { ReaderViewModel.exportableContentClasses.contains($0.contentClass) }
+        .filter(ReaderViewModel.isNarrable)
         .map { ($0, Int(key)) }
     }
   }
@@ -288,7 +286,7 @@ final class ReaderViewModel {
 
   var exportNonNarrableUnits: Int {
     normalizedPages.values.flatMap(\.units)
-      .filter { !ReaderViewModel.exportableContentClasses.contains($0.contentClass) }
+      .filter { !ReaderViewModel.isNarrable($0) }
       .count
   }
 
@@ -1091,7 +1089,7 @@ final class ReaderViewModel {
   /// always said so in as many words (`ContentClass::Heading`: "Headings are still narratable
   /// content, not something to skip"); this filter was the one place that disagreed.
   static func isNarrable(_ unit: LFReadingUnit) -> Bool {
-    unit.contentClass == "prose" || unit.contentClass == "heading"
+    unit.isNarrable
   }
 
   /// Continuous reading: when the current batch runs out, keep going with the rest of the page and
@@ -1192,13 +1190,15 @@ final class ReaderViewModel {
     let dataRootURL = phoneticDataRootURL
     let generation = narrationGeneration
     narrationTask = Task {
+      var transferredToPlayer = false
+      defer {
+        if !transferredToPlayer { try? FileManager.default.removeItem(at: workRoot) }
+      }
       do {
-        let result = try await Task.detached(priority: .userInitiated) {
-          let preparedRequest = EngineClient.phonemizedRequest(
-            request, engineURL: frontendURL, dataRoot: dataRootURL)
-          return try ModelServices.synthesize(
-            preparedRequest, runtimeURL: runtimeURL, modelURL: modelURL, workRoot: workRoot)
-        }.value
+        let preparedRequest = try await EngineClient.phonemizedRequestCancellable(
+          request, engineURL: frontendURL, dataRoot: dataRootURL)
+        let result = try await ModelServices.synthesizeCancellable(
+          preparedRequest, runtimeURL: runtimeURL, modelURL: modelURL, workRoot: workRoot)
         guard !Task.isCancelled, generation == narrationGeneration else { return }
         let audioURL = URL(fileURLWithPath: result.audioPath)
         currentUnitID = unit.unitID
@@ -1209,8 +1209,10 @@ final class ReaderViewModel {
           self.narrationState = .preparing
           self.synthesizeNext(modelURL: modelURL, runtimeURL: runtimeURL)
         }
+        transferredToPlayer = true
+      } catch is CancellationError {
+        return
       } catch {
-        try? FileManager.default.removeItem(at: workRoot)
         guard generation == narrationGeneration else { return }
         narrationState = .failed
       }

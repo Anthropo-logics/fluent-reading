@@ -10,6 +10,7 @@ xcrun swiftc \
   -module-cache-path /tmp/lectura-swift-module-cache \
   -framework PDFKit \
   -o "$probe" \
+  "$project_root/apps/macos/MacPlatform/Document/DocumentLayoutServices.swift" \
   "$project_root/apps/macos/MacPlatform/Document/DocumentServices.swift" \
   "$project_root/apps/macos/MacPlatform/Document/PDFGlyphReplay.swift" \
   "$project_root/apps/macos/MacPlatform/Files/FileServices.swift" \

@@ -36,6 +36,38 @@ export function runEspeak(span, voice, execute = execFileSync) {
   );
 }
 
+// Kept only to produce a faithful before/after artifact for Story 6.27.
+export function legacyIpaChunks(text) {
+  const words = text.trim().split(/\s+/u).filter(Boolean);
+  const chunkCount = Math.ceil(words.length / 30);
+  const chunks = [];
+  let start = 0;
+  for (let remainingChunks = chunkCount; remainingChunks >= 1; remainingChunks -= 1) {
+    const remainingWords = words.length - start;
+    if (remainingChunks === 1) {
+      chunks.push(words.slice(start).join(" "));
+      break;
+    }
+    const ideal = Math.min(30, Math.ceil(remainingWords / remainingChunks));
+    const required = remainingWords - (remainingChunks - 1) * 30;
+    const lower = Math.max(required, ideal - 8);
+    const upper = Math.min(30, ideal + 8);
+    const endsInPunctuation = (size) => /[,.;:!?]$/u.test(words[start + size - 1]);
+    let nearby = lower;
+    for (let size = lower + 1; size <= upper; size += 1) {
+      if (endsInPunctuation(size) !== endsInPunctuation(nearby)) {
+        if (endsInPunctuation(size)) nearby = size;
+      } else if (Math.abs(size - ideal) < Math.abs(nearby - ideal)) {
+        nearby = size;
+      }
+    }
+    const size = endsInPunctuation(nearby) ? nearby : ideal;
+    chunks.push(words.slice(start, start + size).join(" "));
+    start += size;
+  }
+  return chunks;
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const languageIndex = process.argv.indexOf("--language");
   const language = languageIndex >= 0 ? process.argv[languageIndex + 1] : undefined;

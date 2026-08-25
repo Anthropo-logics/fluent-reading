@@ -9,6 +9,189 @@ import XCTest
 @testable import MacPlatform
 
 final class DocumentServicesTests: XCTestCase {
+  func testLayoutEvidenceDecodesFromOldPayloadAndEncodesWithSnakeCaseKeys() throws {
+    let oldPayload =
+      #"{"block_id":"old","text":"text","region":{"page_index":0,"rect_pdf_points":[0,0,10,10],"page_rotation_degrees":0,"source_to_page_transform":[1,0,0,1,0,0],"confidence":1},"confidence":1}"#
+    let oldBlock = try JSONDecoder().decode(DigitalTextBlock.self, from: Data(oldPayload.utf8))
+    XCTAssertNil(oldBlock.layoutRole)
+    XCTAssertNil(oldBlock.layoutConfidence)
+    XCTAssertNil(oldBlock.layoutOrder)
+    XCTAssertNil(oldBlock.narrationDisposition)
+    XCTAssertNil(oldBlock.physicalPageIndex)
+
+    let enriched = DigitalTextBlock(
+      blockID: "new", text: "text", region: oldBlock.region, confidence: 1,
+      layoutRole: .table, layoutConfidence: 0.7, layoutOrder: 9,
+      narrationDisposition: .onDemand, physicalPageIndex: 1)
+    let object = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: JSONEncoder().encode(enriched)) as? [String: Any])
+    XCTAssertEqual(object["layout_role"] as? String, "table")
+    XCTAssertEqual(object["layout_confidence"] as? Double, 0.7)
+    XCTAssertEqual(object["layout_order"] as? Int, 9)
+    XCTAssertEqual(object["narration_disposition"] as? String, "on_demand")
+    XCTAssertEqual(object["physical_page_index"] as? Int, 1)
+  }
+
+  func testDigitalPageResultRetainsEveryNarrationDispositionAndOldPayloadDecodes() throws {
+    let source = DigitalSourceRegion(
+      pageIndex: 0, rectPDFPoints: [0, 0, 10, 10], pageRotationDegrees: 0,
+      sourceToPageTransform: [1, 0, 0, 1, 0, 0], confidence: 1)
+    let blocks = [
+      DigitalTextBlock(
+        blockID: "automatic", text: "automatic", region: source, confidence: 1,
+        narrationDisposition: .automatic),
+      DigitalTextBlock(
+        blockID: "on-demand", text: "on-demand", region: source, confidence: 1,
+        narrationDisposition: .onDemand),
+      DigitalTextBlock(
+        blockID: "never", text: "never", region: source, confidence: 1,
+        narrationDisposition: .never),
+    ]
+    let page = DigitalPageResult(
+      pageIndex: 0, status: "completed", blocks: blocks, errorCode: nil,
+      layoutStatus: "completed", layoutProcessorRevision: "test",
+      layoutElapsedMilliseconds: 7)
+
+    XCTAssertEqual(page.blocks.map(\.blockID), ["automatic", "on-demand", "never"])
+    XCTAssertEqual(
+      page.blocks.map(\.narrationDisposition), [.automatic, .onDemand, .never])
+
+    let oldPayload = #"{"page_index":0,"status":"completed","blocks":[],"error_code":null}"#
+    let oldPage = try JSONDecoder().decode(DigitalPageResult.self, from: Data(oldPayload.utf8))
+    XCTAssertNil(oldPage.layoutStatus)
+    XCTAssertNil(oldPage.layoutProcessorRevision)
+    XCTAssertNil(oldPage.layoutElapsedMilliseconds)
+  }
+
+  func testOCRSplitRequiresACompletedTwoPageLayoutWithRegions() {
+    func layout(_ regions: [DocumentLayoutRegion]) -> DocumentLayoutResult {
+      DocumentLayoutResult(
+        regions: regions, physicalPageCount: 2, status: "completed", elapsedMilliseconds: 1,
+        processorRevision: "test")
+    }
+    let region = DocumentLayoutRegion(
+      role: .text, disposition: .automatic, confidence: 0.9,
+      rectPDFPoints: [0, 0, 100, 100], order: 0, physicalPageIndex: 0)
+
+    XCTAssertFalse(DocumentServices.shouldSplitOCR(for: layout([])))
+    XCTAssertTrue(DocumentServices.shouldSplitOCR(for: layout([region])))
+  }
+
+  func testBridgeKeepsUnmatchedLeftSpreadProseBeforeMatchedRightProse() async throws {
+    func block(_ id: String, _ rect: [Double]) -> DigitalTextBlock {
+      DigitalTextBlock(
+        blockID: id, text: "\(id).",
+        region: DigitalSourceRegion(
+          pageIndex: 0, rectPDFPoints: rect, pageRotationDegrees: 0,
+          sourceToPageTransform: [1, 0, 0, 1, 0, 0], confidence: 1),
+        confidence: 1)
+    }
+    func region(
+      _ rect: [Double], order: UInt32, physicalPageIndex: UInt8
+    ) -> DocumentLayoutRegion {
+      DocumentLayoutRegion(
+        role: .text, disposition: .automatic, confidence: 0.9, rectPDFPoints: rect,
+        order: order, physicalPageIndex: physicalPageIndex)
+    }
+
+    let sources = [
+      block("right-top", [700, 700, 100, 20]),
+      block("left-unmatched", [100, 300, 100, 20]),
+      block("right-bottom", [700, 100, 100, 20]),
+      block("left-matched", [100, 700, 100, 20]),
+    ]
+    let layout = DocumentLayoutResult(
+      regions: [
+        region([100, 700, 100, 20], order: 0, physicalPageIndex: 0),
+        region([700, 700, 100, 20], order: 1, physicalPageIndex: 1),
+        region([700, 100, 100, 20], order: 2, physicalPageIndex: 1),
+      ], physicalPageCount: 2, status: "completed", elapsedMilliseconds: 1,
+      processorRevision: "test")
+    let page = DigitalPageResult(
+      pageIndex: 0, status: "completed",
+      blocks: DocumentLayoutAlignment.enrich(sources, with: layout), errorCode: nil)
+
+    let encoded = try JSONEncoder().encode(page.blocks)
+    let decoded = try JSONDecoder().decode([DigitalTextBlock].self, from: encoded)
+    XCTAssertEqual(decoded.first { $0.blockID == "left-unmatched" }?.physicalPageIndex, 0)
+
+    let event = try await EngineClient.normalizePage(
+      page, documentFingerprint: String(repeating: "a", count: 64),
+      generationID: "generation_partial_spread", language: "en")
+    let normalized = try XCTUnwrap(event.result?.normalizedPage)
+    XCTAssertEqual(
+      normalized.units.flatMap(\.sourceBlockIDs),
+      ["left-matched", "left-unmatched", "right-top", "right-bottom"])
+  }
+
+  func testSplitSpreadRetriesOnlyTheEmptyPrimaryHalfAndKeepsLeftToRightSourceOrder() throws {
+    func block(_ id: String, _ text: String, x: Double) -> DigitalTextBlock {
+      DigitalTextBlock(
+        blockID: id, text: text,
+        region: DigitalSourceRegion(
+          pageIndex: 0, rectPDFPoints: [x, 100, 80, 20], pageRotationDegrees: 0,
+          sourceToPageTransform: [1, 0, 0, 1, 0, 0], confidence: 0.9),
+        confidence: 0.9)
+    }
+
+    let primaryLeft = block("page-0-ocr-left-0", "Texto izquierdo primario", x: 20)
+    let fallbackRight = block("page-0-ocr-right-0", "Texto derecho recuperado", x: 320)
+    var fallbackIndexes: [Int] = []
+
+    let resolution = DocumentServices.resolveOCRHalfBlocks(primary: [[primaryLeft], []]) {
+      halfIndex in
+      fallbackIndexes.append(halfIndex)
+      return halfIndex == 1 ? [fallbackRight] : []
+    }
+
+    XCTAssertEqual(fallbackIndexes, [1], "the successful primary half must not be rendered twice")
+    XCTAssertFalse(resolution.hasUnresolvedHalf)
+    XCTAssertEqual(resolution.blocks.map(\.blockID), [primaryLeft.blockID, fallbackRight.blockID])
+    XCTAssertEqual(
+      resolution.blocks.map(\.text), ["Texto izquierdo primario", "Texto derecho recuperado"])
+    XCTAssertEqual(resolution.blocks[0].region.rectPDFPoints, primaryLeft.region.rectPDFPoints)
+    XCTAssertEqual(resolution.blocks[1].region.rectPDFPoints, fallbackRight.region.rectPDFPoints)
+  }
+
+  func testSplitSpreadPreservesPrimaryHalfWhenFallbackRasterIsUnavailable() {
+    let primaryLeft = DigitalTextBlock(
+      blockID: "page-0-ocr-left-0", text: "Texto izquierdo primario",
+      region: DigitalSourceRegion(
+        pageIndex: 0, rectPDFPoints: [20, 100, 80, 20], pageRotationDegrees: 0,
+        sourceToPageTransform: [1, 0, 0, 1, 0, 0], confidence: 0.9),
+      confidence: 0.9)
+
+    let resolution = DocumentServices.resolveOCRHalfBlocks(
+      primary: [[primaryLeft], []], fallback: nil)
+
+    XCTAssertEqual(resolution.blocks.map(\.blockID), [primaryLeft.blockID])
+    XCTAssertTrue(resolution.hasUnresolvedHalf)
+    XCTAssertEqual(
+      DocumentServices.ocrResultStatus(
+        blocks: resolution.blocks, hasUnresolvedHalf: resolution.hasUnresolvedHalf,
+        renderedBelowTargetScale: false),
+      "degraded")
+  }
+
+  func testSplitSpreadPreservesPrimaryHalfWhenFallbackRecognitionIsEmpty() {
+    let primaryLeft = DigitalTextBlock(
+      blockID: "page-0-ocr-left-0", text: "Texto izquierdo primario",
+      region: DigitalSourceRegion(
+        pageIndex: 0, rectPDFPoints: [20, 100, 80, 20], pageRotationDegrees: 0,
+        sourceToPageTransform: [1, 0, 0, 1, 0, 0], confidence: 0.9),
+      confidence: 0.9)
+
+    let resolution = DocumentServices.resolveOCRHalfBlocks(primary: [[primaryLeft], []]) { _ in [] }
+
+    XCTAssertEqual(resolution.blocks.map(\.blockID), [primaryLeft.blockID])
+    XCTAssertTrue(resolution.hasUnresolvedHalf)
+    XCTAssertEqual(
+      DocumentServices.ocrResultStatus(
+        blocks: resolution.blocks, hasUnresolvedHalf: resolution.hasUnresolvedHalf,
+        renderedBelowTargetScale: false),
+      "degraded")
+  }
+
   @MainActor
   func testOpensRealPDFWithoutChangingPageGeometryRotationOrSource() throws {
     let url = try makePDF(pageCount: 2, rotation: 90)
@@ -221,7 +404,7 @@ final class DocumentServicesTests: XCTestCase {
   }
 
   @MainActor
-  func testMatchedSuperscriptCalloutIsOmittedOnlyFromSpokenText() throws {
+  func testMatchedSuperscriptCalloutStaysVisibleButNeverReachesTheSpokenPlan() async throws {
     let url = try makeFootnoteCalloutPDF()
     defer { try? FileManager.default.removeItem(at: url) }
     let document = try DocumentServices.openReadOnly(at: url)
@@ -231,6 +414,51 @@ final class DocumentServicesTests: XCTestCase {
 
     XCTAssertEqual(body.text, "En 2011 hubo 20 casos; la fuente1 confirmó 59.1%.")
     XCTAssertEqual(body.spokenText, "En 2011 hubo 20 casos; la fuente confirmó 59.1%.")
+
+    let folio = DigitalTextBlock(
+      blockID: "folio-46", text: "46",
+      region: DigitalSourceRegion(
+        pageIndex: 0, rectPDFPoints: [240, 15, 20, 10], pageRotationDegrees: 0,
+        sourceToPageTransform: [1, 0, 0, 1, 0, 0], confidence: 1),
+      confidence: 1, layoutRole: .number, layoutConfidence: 1,
+      layoutOrder: UInt32(page.blocks.count), narrationDisposition: .never,
+      physicalPageIndex: 0)
+    let bridgedPage = DigitalPageResult(
+      pageIndex: page.pageIndex, status: page.status, blocks: page.blocks + [folio], errorCode: nil)
+    let encodedBlocks = String(
+      decoding: try JSONEncoder().encode(bridgedPage.blocks), as: UTF8.self)
+    XCTAssertTrue(encodedBlocks.contains(#""spoken_text""#))
+    XCTAssertTrue(encodedBlocks.contains(#""narration_disposition":"never""#))
+
+    let normalization = try await EngineClient.normalizePage(
+      bridgedPage, documentFingerprint: String(repeating: "f", count: 64),
+      generationID: "generation_footnote", language: "es")
+    let normalized = try XCTUnwrap(normalization.result?.normalizedPage)
+    let normalizedBody = try XCTUnwrap(
+      normalized.units.first(where: { $0.sourceBlockIDs.contains(body.blockID) }))
+    XCTAssertTrue(normalizedBody.text.contains("fuente1"), "el marcador sigue visible")
+    XCTAssertTrue(normalizedBody.narrationText.contains("fuente confirmó"))
+    XCTAssertFalse(normalizedBody.narrationText.contains("fuente1"))
+
+    let normalizedFolio = try XCTUnwrap(
+      normalized.units.first(where: { $0.sourceBlockIDs.contains(folio.blockID) }))
+    XCTAssertEqual(normalizedFolio.text, "46", "el folio también conserva evidencia visible")
+    XCTAssertEqual(normalizedFolio.resolvedNarrationDisposition, .never)
+    let automatic = normalized.units.filter { $0.resolvedNarrationDisposition == .automatic }
+    XCTAssertFalse(automatic.flatMap(\.sourceBlockIDs).contains(folio.blockID))
+    let plans = try automatic.map {
+      try EngineClient.spokenPlan(text: $0.narrationText, language: "es")
+    }
+    let plannedSpeech = plans.map(\.normalizedText).joined(separator: " ")
+    XCTAssertTrue(plannedSpeech.contains("fuente confirmó"))
+    XCTAssertFalse(plannedSpeech.contains("fuente1"), "el dígito elevado no llega a la voz")
+    XCTAssertFalse(plannedSpeech.split(whereSeparator: \.isWhitespace).contains("46"))
+  }
+
+  func testFootnoteDigitScanRejectsUnicodeSurrogatesWithoutCrashing() throws {
+    let one = try XCTUnwrap("1".utf16.first)
+    XCTAssertTrue(DocumentServices.isDecimalDigit(one))
+    XCTAssertTrue("😀".utf16.allSatisfy { !DocumentServices.isDecimalDigit($0) })
   }
 
   @MainActor
@@ -296,6 +524,47 @@ final class DocumentServicesTests: XCTestCase {
     XCTAssertGreaterThan(page.blocks[0].confidence, 0.9)
     XCTAssertGreaterThan(page.blocks[0].region.rectPDFPoints[2], 0)
     XCTAssertEqual(try digest(url), before)
+  }
+
+  func testNativePDFRasterKeepsInkAtTheRequestedPixelSize() throws {
+    let root = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+    let url = root.appendingPathComponent("tests/corpus/documents/en-single-scanned.pdf")
+    let page = try XCTUnwrap(PDFDocument(url: url)?.page(at: 0))
+
+    let image = try XCTUnwrap(
+      PDFPageRasterizer.image(of: page, pixelSize: CGSize(width: 320, height: 240)))
+
+    XCTAssertEqual(image.width, 320)
+    XCTAssertEqual(image.height, 240)
+    let bitmap = NSBitmapImageRep(cgImage: image)
+    let ink = stride(from: 0, to: image.height, by: 4).reduce(into: 0) { count, y in
+      for x in stride(from: 0, to: image.width, by: 4) {
+        guard
+          let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB)
+        else { continue }
+        if color.redComponent + color.greenComponent + color.blueComponent < 2.85 {
+          count += 1
+        }
+      }
+    }
+    XCTAssertGreaterThan(ink, 10, "the scanned page rendered as an empty white bitmap")
+  }
+
+  func testOCRRenderUsesDisplayedAxesForQuarterTurnedPages() {
+    let bounds = CGRect(x: 10, y: 20, width: 831, height: 584)
+
+    XCTAssertEqual(
+      DocumentServices.ocrRenderSize(pageBounds: bounds, rotation: 0, scale: 2),
+      CGSize(width: 1_662, height: 1_168))
+    for rotation in [90, 270] {
+      XCTAssertEqual(
+        DocumentServices.ocrRenderSize(pageBounds: bounds, rotation: rotation, scale: 2),
+        CGSize(width: 1_168, height: 1_662))
+    }
   }
 
   /// A page turned by the reader is read along the axis the reader chose (Story 6.15).

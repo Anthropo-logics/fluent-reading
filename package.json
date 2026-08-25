@@ -1,6 +1,6 @@
 {
   "name": "lectura-fluida",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Lector PDF local con lectura asistida para macOS",
   "engines": {
@@ -10,7 +10,7 @@
   "scripts": {
     "lint": "./scripts/verify.sh lint",
     "typecheck": "./scripts/verify.sh typecheck",
-    "test": "node --test tests/app-icon.test.mjs && ./scripts/verify.sh test",
+    "test": "node --test tests/app-icon.test.mjs tests/layout-model-package.test.mjs && ./scripts/verify.sh test",
     "build": "./scripts/verify.sh build"
   }
 }

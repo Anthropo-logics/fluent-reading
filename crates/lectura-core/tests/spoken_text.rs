@@ -30,6 +30,7 @@ fn normalizes_only_universal_forms_without_mutating_the_reading_unit() {
             unit_id: "unit-1".into(),
             kind: ReadingUnitKind::Paragraph,
             content_class: ContentClass::Prose,
+            narration_disposition: None,
             processing_route: lectura_core::ProcessingRoute::DirectText,
             order_key: UnitOrderKey {
                 primary_page_index: 0,

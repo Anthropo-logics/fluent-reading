@@ -8,6 +8,7 @@ fn unit(id: &str, content_class: ContentClass, index: u32) -> ReadingUnit {
         unit_id: id.into(),
         kind: ReadingUnitKind::Paragraph,
         content_class,
+        narration_disposition: None,
         processing_route: ProcessingRoute::DirectText,
         order_key: UnitOrderKey {
             primary_page_index: 0,

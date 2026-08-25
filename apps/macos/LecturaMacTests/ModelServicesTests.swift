@@ -1316,6 +1316,123 @@ final class ModelServicesTests: XCTestCase {
     XCTAssertFalse(FileManager.default.fileExists(atPath: work.path))
   }
 
+  func testCancellingSynthesisTerminatesRuntimeAndRemovesOwnedWorkRoot() async throws {
+    let scratch =
+      ProcessInfo.processInfo.environment["LECTURA_TEST_SCRATCH"]
+      .map { URL(fileURLWithPath: $0, isDirectory: true) }
+      ?? FileManager.default.temporaryDirectory
+    let root = scratch.appendingPathComponent(
+      "model-services-cancel-\(UUID().uuidString)", isDirectory: true)
+    let model = root.appendingPathComponent("model", isDirectory: true)
+    let work = root.appendingPathComponent("work", isDirectory: true)
+    let runtime = root.appendingPathComponent("runtime")
+    let started = root.appendingPathComponent("started")
+    let terminated = root.appendingPathComponent("terminated")
+    try FileManager.default.createDirectory(at: model, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try Data(
+      "#!/bin/sh\ntrap 'touch \"$TERMINATED_MARKER\"; exit 143' TERM INT\ntouch \"$STARTED_MARKER\"\nwhile :; do :; done\n"
+        .utf8
+    ).write(to: runtime)
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: runtime.path)
+    setenv("STARTED_MARKER", started.path, 1)
+    setenv("TERMINATED_MARKER", terminated.path, 1)
+    defer {
+      unsetenv("STARTED_MARKER")
+      unsetenv("TERMINATED_MARKER")
+    }
+
+    let task = Task {
+      try await ModelServices.synthesizeCancellable(
+        TTSSynthesisRequest(
+          modelId: "kokoro-82m-4bit",
+          modelRevision: "e4468a460f6f70b9125a003e0adb1ab7d4904bbd",
+          runtimeId: "mlx-audio-swift", runtimeVersion: "v0.1.3",
+          voiceId: "ef_dora", language: "es", rawIPA: false,
+          units: [TTSUnitRequest(unitId: "unit", text: "Texto verificable")]),
+        runtimeURL: runtime, modelURL: model, workRoot: work)
+    }
+    let deadline = ContinuousClock.now + .seconds(5)
+    while !FileManager.default.fileExists(atPath: started.path) {
+      guard ContinuousClock.now < deadline else {
+        task.cancel()
+        XCTFail("runtime did not start before the condition deadline")
+        _ = try? await task.value
+        return
+      }
+      try await Task.sleep(for: .milliseconds(10))
+    }
+
+    task.cancel()
+    do {
+      _ = try await task.value
+      XCTFail("cancelled synthesis returned audio")
+    } catch is CancellationError {
+      // Expected: cancellation owns the process and waits for its cleanup.
+    } catch {
+      XCTFail("cancelled synthesis returned \(error)")
+    }
+    XCTAssertTrue(FileManager.default.fileExists(atPath: terminated.path))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: work.path))
+  }
+
+  func testCancellingPhonemizedRequestTerminatesBlockingESpeak() async throws {
+    let scratch =
+      ProcessInfo.processInfo.environment["LECTURA_TEST_SCRATCH"]
+      .map { URL(fileURLWithPath: $0, isDirectory: true) }
+      ?? FileManager.default.temporaryDirectory
+    let root = scratch.appendingPathComponent(
+      "model-services-phonemize-cancel-\(UUID().uuidString)", isDirectory: true)
+    let engine = root.appendingPathComponent("espeak-ng")
+    let started = root.appendingPathComponent("started")
+    let terminated = root.appendingPathComponent("terminated")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try Data(
+      "#!/bin/sh\ntrap 'touch \"$TERMINATED_MARKER\"; exit 143' TERM INT\ntouch \"$STARTED_MARKER\"\nwhile :; do :; done\n"
+        .utf8
+    ).write(to: engine)
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: engine.path)
+    setenv("STARTED_MARKER", started.path, 1)
+    setenv("TERMINATED_MARKER", terminated.path, 1)
+    defer {
+      unsetenv("STARTED_MARKER")
+      unsetenv("TERMINATED_MARKER")
+    }
+
+    let request = TTSSynthesisRequest(
+      modelId: "kokoro-82m-4bit",
+      modelRevision: "e4468a460f6f70b9125a003e0adb1ab7d4904bbd",
+      runtimeId: "mlx-audio-swift", runtimeVersion: "v0.1.3",
+      voiceId: "ef_dora", language: "es", rawIPA: false,
+      units: [TTSUnitRequest(unitId: "unit", text: "Texto verificable.")])
+    let task = Task {
+      try await EngineClient.phonemizedRequestCancellable(
+        request, engineURL: engine, dataRoot: root)
+    }
+    let deadline = ContinuousClock.now + .seconds(5)
+    while !FileManager.default.fileExists(atPath: started.path) {
+      guard ContinuousClock.now < deadline else {
+        task.cancel()
+        XCTFail("eSpeak did not start before the condition deadline")
+        _ = try? await task.value
+        return
+      }
+      try await Task.sleep(for: .milliseconds(10))
+    }
+
+    task.cancel()
+    do {
+      _ = try await task.value
+      XCTFail("cancelled phonemization returned a request")
+    } catch is CancellationError {
+      // Expected: the complete preparation path owns and stops eSpeak.
+    } catch {
+      XCTFail("cancelled phonemization returned \(error)")
+    }
+    XCTAssertTrue(FileManager.default.fileExists(atPath: terminated.path))
+  }
+
   func testRawIPAIsForwardedOnlyToKokoroRuntime() throws {
     let root = FileManager.default.temporaryDirectory
       .appendingPathComponent("model-services-ipa-\(UUID().uuidString)", isDirectory: true)

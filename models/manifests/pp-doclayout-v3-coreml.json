@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "id": "pp-doclayout-v3-coreml",
+  "model_revision": "97d101e6db2642e162a1d05392d1b0231c91033e",
+  "source_model": "PaddlePaddle/PP-DocLayoutV3_safetensors",
+  "source_revision": "97d101e6db2642e162a1d05392d1b0231c91033e",
+  "source_weights_sha256": "5ea422c6cc5fe759a47e1357c35639b58173508e025a3131cbe4b6ac59e2b85e",
+  "purpose": "document_layout",
+  "authors": ["PaddlePaddle"],
+  "license_id": "Apache-2.0",
+  "license_text_path": "../licenses/PPDocLayoutV3-Apache-2.0.txt",
+  "license_text_resource": "PPDocLayoutV3-Apache-2.0.txt",
+  "license_text_sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+  "source_license_evidence_url": "https://huggingface.co/PaddlePaddle/PP-DocLayoutV3_safetensors/blob/97d101e6db2642e162a1d05392d1b0231c91033e/README.md",
+  "source_notice_present": false,
+  "source_notice_audit_url": "https://huggingface.co/api/models/PaddlePaddle/PP-DocLayoutV3_safetensors/revision/97d101e6db2642e162a1d05392d1b0231c91033e",
+  "usage_restrictions": [],
+  "runtime_id": "Core ML",
+  "runtime_version": "macOS 15+",
+  "quantization": "fp32",
+  "bundled_directory": "PPDocLayoutV3-fp32.mlmodelc",
+  "files": [
+    {
+      "relative_path": "analytics/coremldata.bin",
+      "size_bytes": 243,
+      "sha256_hex": "569169eab872bfd923d253afc6f48b630b449e843892a2dc4899b5e65663fb14"
+    },
+    {
+      "relative_path": "coremldata.bin",
+      "size_bytes": 727,
+      "sha256_hex": "2f98bd067a7bfa26a885746d016416e837258fd1941187550f48e7577f87e425"
+    },
+    {
+      "relative_path": "model.mil",
+      "size_bytes": 1056336,
+      "sha256_hex": "e621971d241f6e69e626a0660e8833f79ace43da863574e24692bc525c9c2edc"
+    },
+    {
+      "relative_path": "weights/weight.bin",
+      "size_bytes": 181761536,
+      "sha256_hex": "48522ff7066d71f6dd0078554e371813a478cf8ea8be9c1c4b91ef457802aa41"
+    }
+  ]
+}

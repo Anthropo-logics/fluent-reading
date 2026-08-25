@@ -25,11 +25,12 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["unit_id", "kind", "content_class", "processing_route", "order_key", "text", "spoken_text", "source_regions", "source_block_ids", "parent_unit_id", "confidence", "decision_trace"],
+        "required": ["unit_id", "kind", "content_class", "processing_route", "order_key", "text", "source_regions", "source_block_ids", "parent_unit_id", "confidence", "decision_trace"],
         "properties": {
           "unit_id": { "$ref": "#/$defs/id" },
           "kind": { "enum": ["paragraph", "sentence"] },
           "content_class": { "enum": ["prose", "table", "formula", "note", "heading", "unsupported"] },
+          "narration_disposition": { "enum": ["automatic", "on_demand", "never"] },
           "processing_route": { "enum": ["direct_text", "ocr"] },
           "order_key": {
             "type": "object",

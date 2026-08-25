@@ -447,6 +447,46 @@ public enum ModelServices {
     modelURL: URL,
     workRoot: URL? = nil
   ) throws -> TTSSynthesisResult {
+    try synthesize(
+      request, runtimeURL: runtimeURL, modelURL: modelURL, workRoot: workRoot,
+      processOwner: nil)
+  }
+
+  public static func synthesizeCancellable(
+    _ request: TTSSynthesisRequest,
+    runtimeURL: URL,
+    modelURL: URL,
+    workRoot: URL
+  ) async throws -> TTSSynthesisResult {
+    let processOwner = CancellableProcessOwner()
+    return try await withTaskCancellationHandler {
+      do {
+        let result = try await Task.detached(priority: .userInitiated) {
+          try synthesize(
+            request, runtimeURL: runtimeURL, modelURL: modelURL, workRoot: workRoot,
+            processOwner: processOwner)
+        }.value
+        try Task.checkCancellation()
+        return result
+      } catch {
+        if Task.isCancelled {
+          try? FileManager.default.removeItem(at: workRoot)
+          throw CancellationError()
+        }
+        throw error
+      }
+    } onCancel: {
+      processOwner.cancel()
+    }
+  }
+
+  private static func synthesize(
+    _ request: TTSSynthesisRequest,
+    runtimeURL: URL,
+    modelURL: URL,
+    workRoot: URL?,
+    processOwner: CancellableProcessOwner?
+  ) throws -> TTSSynthesisResult {
     try validate(request)
     guard runtimeURL.isFileURL, FileManager.default.isExecutableFile(atPath: runtimeURL.path) else {
       throw ModelServiceError.runtimeMissing
@@ -479,7 +519,7 @@ public enum ModelServices {
           "fragment-\(segments.count).wav", isDirectory: false)
         let elapsedMs = try runRuntime(
           request: request, runtimeURL: runtimeURL, modelURL: modelURL,
-          text: text, outputURL: fragmentURL)
+          text: text, outputURL: fragmentURL, processOwner: processOwner)
         let reader = try AVAudioFile(forReading: fragmentURL)
         guard reader.length > 0, reader.processingFormat.sampleRate >= 8_000,
           reader.processingFormat.channelCount > 0
@@ -516,6 +556,7 @@ public enum ModelServices {
     guard !segments.isEmpty, FileManager.default.fileExists(atPath: outputURL.path) else {
       throw ModelServiceError.outputInvalid
     }
+    try processOwner?.checkCancellation()
     completed = true
     return TTSSynthesisResult(
       modelId: request.modelId,
@@ -570,6 +611,31 @@ public enum ModelServices {
   public static func phonemize(_ text: String, language: String, engineURL: URL, dataRoot: URL)
     -> String?
   {
+    try? phonemize(
+      text, language: language, engineURL: engineURL, dataRoot: dataRoot, processOwner: nil)
+  }
+
+  public static func phonemizeCancellable(
+    _ text: String, language: String, engineURL: URL, dataRoot: URL
+  ) async throws -> String? {
+    let processOwner = CancellableProcessOwner()
+    return try await withTaskCancellationHandler {
+      let value = try await Task.detached(priority: .userInitiated) {
+        try phonemize(
+          text, language: language, engineURL: engineURL, dataRoot: dataRoot,
+          processOwner: processOwner)
+      }.value
+      try Task.checkCancellation()
+      return value
+    } onCancel: {
+      processOwner.cancel()
+    }
+  }
+
+  private static func phonemize(
+    _ text: String, language: String, engineURL: URL, dataRoot: URL,
+    processOwner: CancellableProcessOwner?
+  ) throws -> String? {
     guard FileManager.default.isExecutableFile(atPath: engineURL.path) else { return nil }
     let process = Process()
     process.executableURL = engineURL
@@ -583,10 +649,19 @@ public enum ModelServices {
       runtimeLog.error("espeak.spawn_failed \(error.localizedDescription, privacy: .public)")
       return nil
     }
+    do {
+      try processOwner?.register(process)
+    } catch {
+      if process.isRunning { process.terminate() }
+      process.waitUntilExit()
+      throw error
+    }
+    defer { processOwner?.unregister(process) }
     input.fileHandleForWriting.write(Data("\(text)\n".utf8))
     try? input.fileHandleForWriting.close()
     let data = output.fileHandleForReading.readDataToEndOfFile()
     process.waitUntilExit()
+    try processOwner?.checkCancellation()
     guard process.terminationStatus == 0 else {
       runtimeLog.error("espeak.failed status=\(process.terminationStatus, privacy: .public)")
       return nil
@@ -639,7 +714,8 @@ public enum ModelServices {
     runtimeURL: URL,
     modelURL: URL,
     text: String,
-    outputURL: URL
+    outputURL: URL,
+    processOwner: CancellableProcessOwner?
   ) throws -> UInt64 {
     let startedAt = DispatchTime.now().uptimeNanoseconds
     let process = Process()
@@ -663,8 +739,17 @@ public enum ModelServices {
       runtimeLog.error("tts.spawn_failed \(error.localizedDescription, privacy: .public)")
       throw ModelServiceError.synthesisFailed
     }
+    do {
+      try processOwner?.register(process)
+    } catch {
+      if process.isRunning { process.terminate() }
+      process.waitUntilExit()
+      throw error
+    }
+    defer { processOwner?.unregister(process) }
     let stderrData = diagnostics.fileHandleForReading.readDataToEndOfFile()
     process.waitUntilExit()
+    try processOwner?.checkCancellation()
     guard process.terminationStatus == 0, FileManager.default.fileExists(atPath: outputURL.path)
     else {
       let detail = String(decoding: stderrData.suffix(2_000), as: UTF8.self)
@@ -690,5 +775,38 @@ public enum ModelServices {
       guard buffer.frameLength > 0 else { break }
       try writer.write(from: buffer)
     }
+  }
+}
+
+private final class CancellableProcessOwner: @unchecked Sendable {
+  private let lock = NSLock()
+  private var process: Process?
+  private var cancelled = false
+
+  func register(_ process: Process) throws {
+    lock.lock()
+    defer { lock.unlock() }
+    if cancelled { throw CancellationError() }
+    self.process = process
+  }
+
+  func unregister(_ process: Process) {
+    lock.lock()
+    defer { lock.unlock() }
+    if self.process === process { self.process = nil }
+  }
+
+  func checkCancellation() throws {
+    lock.lock()
+    defer { lock.unlock() }
+    if cancelled { throw CancellationError() }
+  }
+
+  func cancel() {
+    lock.lock()
+    cancelled = true
+    let process = process
+    lock.unlock()
+    if process?.isRunning == true { process?.terminate() }
   }
 }

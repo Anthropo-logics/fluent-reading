@@ -86,7 +86,8 @@ run_lint() {
   cargo fmt --all -- --check
   find contracts/lf-v1 apps/macos -type f \( -name '*.json' -o -name '*.xcstrings' -o -name '*.xctestplan' \) \
     -exec jq -e . {} + >/dev/null
-  bash -n scripts/bootstrap.sh scripts/build-rust-macos.sh scripts/verify.sh tests/integration/ToolingProbe.sh
+  bash -n scripts/bootstrap.sh scripts/build-rust-macos.sh scripts/embed-layout-model.sh \
+    scripts/embed-runtimes.sh scripts/verify.sh tests/integration/ToolingProbe.sh
   swift format lint --recursive --strict apps/macos tests/integration
 }
 

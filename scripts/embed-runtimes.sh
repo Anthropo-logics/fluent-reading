@@ -8,6 +8,7 @@ set -euo pipefail
 
 app="${1:?usage: embed-runtimes.sh <path to LecturaFluida.app> [models root]}"
 models_root="${2:-${LECTURA_MODEL_ROOT:-/Volumes/Extreme SSD/LecturaFluida-Models}}"
+project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 helpers="$app/Contents/Helpers"
 mkdir -p "$helpers"
 
@@ -97,6 +98,18 @@ embed_espeak() {
 
 embed_espeak
 
+layout_default="/Volumes/Extreme SSD/Lectura-Fluida/research/ocr-benchmarks/coreml/PPDocLayoutV3-fp32.mlmodelc"
+if [[ -n "${LECTURA_LAYOUT_MODEL_SOURCE+x}" ]]; then
+  "$project_root/scripts/embed-layout-model.sh" \
+    "$LECTURA_LAYOUT_MODEL_SOURCE" "$app" \
+    "$project_root/models/manifests/pp-doclayout-v3-coreml.json"
+elif [[ -d "$layout_default" ]]; then
+  "$project_root/scripts/embed-layout-model.sh" \
+    "$layout_default" "$app" "$project_root/models/manifests/pp-doclayout-v3-coreml.json"
+else
+  echo "embed-runtimes: skipping PPDocLayoutV3-fp32.mlmodelc (default model absent)" >&2
+fi
+
 # The bundle seal must be refreshed after adding helpers, or macOS rejects the modified app.
 #
 # This used to be `codesign --entitlements /dev/null ... || codesign --force --sign - "$app"`: the
@@ -116,7 +129,6 @@ embed_espeak
 # Team ID to match in the first place; Hardened Runtime here needs actual Developer ID signing, which
 # this project does not yet have. The vulnerability this fixes is the sandbox being stripped, not the
 # absence of Hardened Runtime — add --options runtime back once Developer ID signing exists.
-project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 codesign --force --sign - \
   --entitlements "$project_root/apps/macos/Config/LecturaFluida.entitlements" "$app" >/dev/null
 echo "embed-runtimes: re-signed $app"

@@ -96,7 +96,7 @@ struct AboutView: View {
     GroupBox {
       VStack(alignment: .leading, spacing: 6) {
         HStack(alignment: .firstTextBaseline) {
-          Text(credit.manifest.id)
+          Text(credit.id)
             .font(.headline.monospaced())
             .textSelection(.enabled)
           Spacer(minLength: 12)
@@ -104,20 +104,20 @@ struct AboutView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
         }
-        detail("about.models.license", credit.manifest.licenseId)
-        detail("about.models.authors", credit.manifest.authors.joined(separator: ", "))
-        detail("about.models.revision", credit.manifest.modelRevision)
-        if !credit.manifest.usageRestrictions.isEmpty {
+        detail("about.models.license", credit.licenseId)
+        detail("about.models.authors", credit.authors.joined(separator: ", "))
+        detail("about.models.revision", credit.modelRevision)
+        if !credit.usageRestrictions.isEmpty {
           detail(
             "about.models.restrictions",
-            credit.manifest.usageRestrictions.joined(separator: ", "))
+            credit.usageRestrictions.joined(separator: ", "))
         }
       }
       .padding(4)
       .frame(maxWidth: .infinity, alignment: .leading)
     }
     .accessibilityElement(children: .contain)
-    .accessibilityIdentifier("about.model.\(credit.manifest.id)")
+    .accessibilityIdentifier("about.model.\(credit.id)")
   }
 
   /// The value is never localized on purpose: a licence identifier, an author and a revision hash

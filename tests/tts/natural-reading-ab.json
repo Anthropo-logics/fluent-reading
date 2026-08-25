@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "protocol": "story-6.27-natural-reading-ab-v1",
+  "purpose": "isolate_legacy_vs_current_prosodic_frontend_with_fixed_kokoro_runtime_voice_and_text",
+  "expected_stimuli": 20,
+  "stimuli": [
+    {"id":"S01","language":"es","passage_id":"es-long","sentence_index":0,"features":["comma","complete_sentence"]},
+    {"id":"S02","language":"es","passage_id":"es-long","sentence_index":1,"features":["enumeration","complete_sentence"]},
+    {"id":"S03","language":"es","passage_id":"es-first-departure","sentence_index":0,"features":["long_sentence","commas"]},
+    {"id":"S04","language":"es","passage_id":"es-first-departure","sentence_index":1,"features":["long_sentence","clause_boundaries"]},
+    {"id":"S05","language":"es","passage_id":"es-inn-dialogue","sentence_index":0,"features":["long_sentence","semicolon","dialogue"]},
+    {"id":"S06","language":"es","passage_id":"es-windmills","sentence_index":0,"features":["long_sentence","numbers","dialogue"]},
+    {"id":"S07","language":"es","passage_id":"es-prisoners","sentence_index":1,"features":["long_sentence","dialogue"]},
+
+    {"id":"S08","language":"en","passage_id":"en-long","sentence_index":1,"features":["long_sentence","parenthesis","quotation"]},
+    {"id":"S09","language":"en","passage_id":"en-long","sentence_index":2,"features":["long_sentence","parenthesis","semicolon"]},
+    {"id":"S10","language":"en","passage_id":"en-caucus","sentence_index":0,"features":["dash","enumeration"]},
+    {"id":"S11","language":"en","passage_id":"en-caucus","sentence_index":1,"features":["colon","clause_boundaries"]},
+    {"id":"S12","language":"en","passage_id":"en-caterpillar","sentence_index":0,"features":["colon","comma"]},
+    {"id":"S13","language":"en","passage_id":"en-tea-party","sentence_index":0,"features":["colon","enumeration"]},
+    {"id":"S14","language":"en","passage_id":"en-tea-party","sentence_index":2,"features":["contrast","comma"]},
+
+    {"id":"S15","language":"pt","passage_id":"pt-long","sentence_index":1,"features":["comma","proper_name"]},
+    {"id":"S16","language":"pt","passage_id":"pt-long","sentence_index":2,"features":["enumeration","comma"]},
+    {"id":"S17","language":"pt","passage_id":"pt-chapter-five","sentence_index":1,"features":["comma","historical_spelling"]},
+    {"id":"S18","language":"pt","passage_id":"pt-chapter-six","sentence_index":1,"features":["semicolon","historical_spelling"]},
+    {"id":"S19","language":"pt","passage_id":"pt-chapter-ten","sentence_index":0,"features":["long_sentence","semicolon"]},
+    {"id":"S20","language":"pt","passage_id":"pt-chapter-twenty-two","sentence_index":1,"features":["colon","historical_spelling"]}
+  ]
+}

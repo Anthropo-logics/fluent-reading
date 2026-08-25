@@ -49,15 +49,88 @@ public enum ModelStorage {
 
 /// One third-party model shown in the About panel (Story 6.4, AC2).
 public struct ModelCredit: Equatable, Sendable, Identifiable {
-  public let manifest: InstallableModelManifest
+  public let id: String
+  public let purpose: String
+  public let authors: [String]
+  public let licenseId: String
+  public let modelRevision: String
+  public let usageRestrictions: [String]
   /// Whether a package for this manifest exists on this device right now.
   public let isInstalled: Bool
 
-  public var id: String { manifest.id }
-
   public init(manifest: InstallableModelManifest, isInstalled: Bool) {
-    self.manifest = manifest
+    id = manifest.id
+    purpose = manifest.purpose
+    authors = manifest.authors
+    licenseId = manifest.licenseId
+    modelRevision = manifest.modelRevision
+    usageRestrictions = manifest.usageRestrictions
     self.isInstalled = isInstalled
+  }
+
+  fileprivate init(layout: LayoutModelManifest, isInstalled: Bool) {
+    id = layout.id
+    purpose = layout.purpose
+    authors = layout.authors
+    licenseId = layout.licenseId
+    modelRevision = layout.modelRevision
+    usageRestrictions = layout.usageRestrictions
+    self.isInstalled = isInstalled
+  }
+}
+
+private struct LayoutModelManifest: Decodable {
+  struct File: Decodable {
+    let relativePath: String
+    let sizeBytes: UInt64
+    let sha256Hex: String
+
+    enum CodingKeys: String, CodingKey {
+      case relativePath = "relative_path"
+      case sizeBytes = "size_bytes"
+      case sha256Hex = "sha256_hex"
+    }
+  }
+
+  let schemaVersion: UInt32
+  let id: String
+  let modelRevision: String
+  let sourceRevision: String
+  let sourceWeightsSHA256: String
+  let purpose: String
+  let authors: [String]
+  let licenseId: String
+  let usageRestrictions: [String]
+  let runtimeId: String
+  let quantization: String
+  let bundledDirectory: String
+  let files: [File]
+
+  enum CodingKeys: String, CodingKey {
+    case schemaVersion = "schema_version"
+    case id
+    case modelRevision = "model_revision"
+    case sourceRevision = "source_revision"
+    case sourceWeightsSHA256 = "source_weights_sha256"
+    case purpose, authors
+    case licenseId = "license_id"
+    case usageRestrictions = "usage_restrictions"
+    case runtimeId = "runtime_id"
+    case quantization
+    case bundledDirectory = "bundled_directory"
+    case files
+  }
+
+  var isValid: Bool {
+    schemaVersion == 1 && id == "pp-doclayout-v3-coreml"
+      && modelRevision == sourceRevision && sourceRevision.count == 40
+      && sourceWeightsSHA256.count == 64 && purpose == "document_layout"
+      && !authors.isEmpty && licenseId == "Apache-2.0" && runtimeId == "Core ML"
+      && quantization == "fp32" && bundledDirectory == "PPDocLayoutV3-fp32.mlmodelc"
+      && files.count == 4 && Set(files.map(\.relativePath)).count == 4
+      && files.allSatisfy {
+        !$0.relativePath.isEmpty && $0.sizeBytes > 0 && $0.sha256Hex.count == 64
+      }
   }
 }
 
@@ -88,19 +161,27 @@ public enum ModelCredits {
     var byID = [String: ModelCredit]()
     for url in manifestURLs {
       guard url.pathExtension.lowercased() == "json",
-        let data = try? Data(contentsOf: url),
-        let manifest = try? ModelPackageInstaller.decodeManifest(data),
-        byID[manifest.id] == nil
+        let data = try? Data(contentsOf: url)
       else { continue }
-      byID[manifest.id] = ModelCredit(
-        manifest: manifest,
-        isInstalled: isPackagePresent(
-          id: manifest.id, storageRoot: storageRoot, containerRoot: containerRoot))
+      if let manifest = try? ModelPackageInstaller.decodeManifest(data), byID[manifest.id] == nil {
+        byID[manifest.id] = ModelCredit(
+          manifest: manifest,
+          isInstalled: isPackagePresent(
+            id: manifest.id, storageRoot: storageRoot, containerRoot: containerRoot))
+      } else if let layout = try? JSONDecoder().decode(LayoutModelManifest.self, from: data),
+        layout.isValid, byID[layout.id] == nil
+      {
+        byID[layout.id] = ModelCredit(
+          layout: layout,
+          isInstalled: isDirectory(
+            url.deletingLastPathComponent().appendingPathComponent(
+              layout.bundledDirectory, isDirectory: true)))
+      }
     }
     // Grouped by purpose, alphabetical inside each group: a stable order keeps the panel from
     // reshuffling between launches, which a dictionary's own order would do.
     return byID.values.sorted {
-      ($0.manifest.purpose, $0.manifest.id) < ($1.manifest.purpose, $1.manifest.id)
+      ($0.purpose, $0.id) < ($1.purpose, $1.id)
     }
   }
 
@@ -111,10 +192,12 @@ public enum ModelCredits {
       containerRoot.appendingPathComponent("installed/\(id)", isDirectory: true),
       storageRoot?.appendingPathComponent("verified-packages/\(id)", isDirectory: true),
     ].compactMap { $0 }
-    return candidates.contains { url in
-      var isDirectory: ObjCBool = false
-      return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
-        && isDirectory.boolValue
-    }
+    return candidates.contains(where: isDirectory)
+  }
+
+  private static func isDirectory(_ url: URL) -> Bool {
+    var directory: ObjCBool = false
+    return FileManager.default.fileExists(atPath: url.path, isDirectory: &directory)
+      && directory.boolValue
   }
 }

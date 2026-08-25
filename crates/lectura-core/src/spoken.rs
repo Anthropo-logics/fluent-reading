@@ -112,7 +112,7 @@ fn split_parts(text: &str) -> Vec<SpokenPart> {
     parts
 }
 
-fn is_prosodic_punctuation(text: &str, index: usize, character: char) -> bool {
+pub(crate) fn is_prosodic_punctuation(text: &str, index: usize, character: char) -> bool {
     if !matches!(character, ',' | '.' | ';' | ':' | '!' | '?' | '—') {
         return false;
     }
@@ -135,7 +135,7 @@ fn is_prosodic_punctuation(text: &str, index: usize, character: char) -> bool {
         .next_back()
         .unwrap_or_default()
         .trim_matches(|value: char| !value.is_alphanumeric() && value != '.');
-    let abbreviation = token.contains('.')
+    let abbreviation = (token.contains('.') && token.chars().any(char::is_alphabetic))
         || matches!(
             token.to_lowercase().as_str(),
             "mr" | "mrs"

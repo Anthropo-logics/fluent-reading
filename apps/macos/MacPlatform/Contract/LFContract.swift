@@ -158,6 +158,7 @@ public struct LFReadingUnit: Codable, Equatable, Sendable {
   public let unitID: String
   public let kind: String
   public let contentClass: String
+  public let narrationDisposition: NarrationDisposition?
   public let processingRoute: String
   public let orderKey: LFJSONValue
   public let text: String
@@ -172,6 +173,7 @@ public struct LFReadingUnit: Codable, Equatable, Sendable {
     case unitID = "unit_id"
     case kind
     case contentClass = "content_class"
+    case narrationDisposition = "narration_disposition"
     case processingRoute = "processing_route"
     case orderKey = "order_key"
     case text
@@ -184,6 +186,17 @@ public struct LFReadingUnit: Codable, Equatable, Sendable {
   }
 
   public var narrationText: String { spokenText ?? text }
+
+  public var resolvedNarrationDisposition: NarrationDisposition {
+    if let narrationDisposition { return narrationDisposition }
+    switch contentClass {
+    case "prose", "heading": return .automatic
+    case "table", "formula": return .onDemand
+    default: return .never
+    }
+  }
+
+  public var isNarrable: Bool { resolvedNarrationDisposition == .automatic }
 }
 
 public struct LFPageProcessingRecord: Codable, Equatable, Sendable {

@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use unicode_normalization::UnicodeNormalization;
 
 use crate::hash::hex_lower;
+use crate::spoken::is_prosodic_punctuation;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SourceRegion {
@@ -22,6 +23,114 @@ pub struct ExtractedBlock {
     pub spoken_text: Option<String>,
     pub region: SourceRegion,
     pub confidence: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout_role: Option<LayoutRole>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout_confidence: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout_order: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub narration_disposition: Option<NarrationDisposition>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub physical_page_index: Option<u8>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum LayoutRole {
+    Abstract,
+    Algorithm,
+    AsideText,
+    Chart,
+    Content,
+    Formula,
+    #[serde(rename = "doc_title")]
+    DocumentTitle,
+    #[serde(rename = "figure_title")]
+    FigureTitle,
+    Footer,
+    Footnote,
+    FormulaNumber,
+    Header,
+    Image,
+    Number,
+    #[serde(rename = "paragraph_title")]
+    ParagraphTitle,
+    Reference,
+    ReferenceContent,
+    Seal,
+    Table,
+    Text,
+    VisionFootnote,
+    Unknown,
+}
+
+impl LayoutRole {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Abstract => "abstract",
+            Self::Algorithm => "algorithm",
+            Self::AsideText => "aside_text",
+            Self::Chart => "chart",
+            Self::Content => "content",
+            Self::Formula => "formula",
+            Self::DocumentTitle => "doc_title",
+            Self::FigureTitle => "figure_title",
+            Self::Footer => "footer",
+            Self::Footnote => "footnote",
+            Self::FormulaNumber => "formula_number",
+            Self::Header => "header",
+            Self::Image => "image",
+            Self::Number => "number",
+            Self::ParagraphTitle => "paragraph_title",
+            Self::Reference => "reference",
+            Self::ReferenceContent => "reference_content",
+            Self::Seal => "seal",
+            Self::Table => "table",
+            Self::Text => "text",
+            Self::VisionFootnote => "vision_footnote",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    fn narration_disposition(self) -> Option<NarrationDisposition> {
+        match self {
+            Self::Unknown => None,
+            Self::Header
+            | Self::Footer
+            | Self::Footnote
+            | Self::VisionFootnote
+            | Self::Number
+            | Self::FormulaNumber
+            | Self::Seal => Some(NarrationDisposition::Never),
+            Self::Algorithm
+            | Self::Chart
+            | Self::Formula
+            | Self::Image
+            | Self::Reference
+            | Self::ReferenceContent
+            | Self::Table => Some(NarrationDisposition::OnDemand),
+            _ => Some(NarrationDisposition::Automatic),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum NarrationDisposition {
+    Automatic,
+    OnDemand,
+    Never,
+}
+
+impl NarrationDisposition {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Automatic => "automatic",
+            Self::OnDemand => "on_demand",
+            Self::Never => "never",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -97,6 +206,8 @@ pub struct ReadingUnit {
     pub unit_id: String,
     pub kind: ReadingUnitKind,
     pub content_class: ContentClass,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub narration_disposition: Option<NarrationDisposition>,
     pub processing_route: ProcessingRoute,
     pub order_key: UnitOrderKey,
     pub text: String,
@@ -232,7 +343,15 @@ pub fn normalize_digital_page(
     requested: RequestedUnit,
 ) -> NormalizedPage {
     let mut blocks = page.blocks.clone();
-    let column_boundary = order_blocks(&mut blocks);
+    let use_layout_order = layout_order_coverage(&blocks) >= 0.60;
+    let column_boundary = if use_layout_order {
+        let mut geometrically_ordered = blocks.clone();
+        let boundary = order_blocks(&mut geometrically_ordered);
+        order_blocks_by_layout(&mut blocks);
+        boundary
+    } else {
+        order_blocks(&mut blocks)
+    };
     let multi_column = column_boundary.is_some();
 
     if blocks.is_empty() {
@@ -335,10 +454,11 @@ pub fn normalize_digital_page(
             });
         }
         let affected: Vec<String> = group.iter().map(|block| block.block_id.clone()).collect();
+        let selected_layout = select_layout_role(&group);
         // A passage that is nothing but a short number is the printed folio. Reading it aloud
         // interrupted the prose and, in the continuous immersion scroll, it sat stranded between
         // paragraphs. Dropping it is recorded so the omission stays auditable.
-        if is_running_folio(&text) {
+        if is_running_folio(&text) && selected_layout.is_none() {
             folio_omissions.push(NormalizationDecision {
                 rule: "drop_running_folio".into(),
                 confidence: 1.0,
@@ -361,6 +481,17 @@ pub fn normalize_digital_page(
             decision_trace.push(NormalizationDecision {
                 rule: "multi_column_order".into(),
                 confidence,
+                affected_segments: affected.clone(),
+            });
+        }
+        if use_layout_order && group.iter().any(has_layout_order) {
+            decision_trace.push(NormalizationDecision {
+                rule: "ml_layout_order".into(),
+                confidence: group
+                    .iter()
+                    .filter_map(|block| block.layout_confidence)
+                    .filter(|value| value.is_finite() && *value >= 0.30)
+                    .fold(1.0_f64, f64::min),
                 affected_segments: affected.clone(),
             });
         }
@@ -392,18 +523,36 @@ pub fn normalize_digital_page(
             .collect();
         let column = usize::from(in_second_column(first));
         let inside_footnote_zone = footnote_zone_start[column].is_some_and(|start| index >= start);
-        let content_class = match metrics_for(first) {
+        let heuristic_class = match metrics_for(first) {
             Some(_) if inside_footnote_zone => ContentClass::Note,
             Some(metrics) if group_is_heading(&groups, index, metrics, &text) => {
                 ContentClass::Heading
             }
             _ => classify_content(&text, confidence, geometry_reliable),
         };
+        let (content_class, narration_disposition) = selected_layout
+            .and_then(|(role, layout_confidence)| {
+                apply_layout_policy(role).map(|(class, disposition)| {
+                    decision_trace.push(NormalizationDecision {
+                        rule: format!("ml_layout_role_{}", role.as_str()),
+                        confidence: layout_confidence,
+                        affected_segments: affected.clone(),
+                    });
+                    decision_trace.push(NormalizationDecision {
+                        rule: format!("layout_policy_{}", disposition.as_str()),
+                        confidence: layout_confidence,
+                        affected_segments: affected.clone(),
+                    });
+                    (class, Some(disposition))
+                })
+            })
+            .unwrap_or((heuristic_class, None));
         let unit_id = stable_id(page, &first.block_id, "paragraph", 0);
         paragraphs.push(ReadingUnit {
             unit_id,
             kind: ReadingUnitKind::Paragraph,
             content_class,
+            narration_disposition,
             processing_route: ProcessingRoute::DirectText,
             order_key: UnitOrderKey {
                 primary_page_index: page.page_index,
@@ -850,6 +999,20 @@ fn starts_new_paragraph(
     if !region_is_reliable(&previous.region) || !region_is_reliable(&next.region) {
         return true;
     }
+    // A confident non-automatic layout policy is a boundary, even when geometry says two boxes
+    // share one visual line. Otherwise a folio beside the final line is absorbed into the prose
+    // group; the automatic text role wins (or the mixed roles become ambiguous), and the source ID
+    // of a `never` block leaks into an audible unit.
+    let previous_disposition = block_layout_disposition(previous);
+    let next_disposition = block_layout_disposition(next);
+    if previous_disposition != next_disposition
+        && [previous_disposition, next_disposition]
+            .into_iter()
+            .flatten()
+            .any(|disposition| disposition == NarrationDisposition::Never)
+    {
+        return true;
+    }
     // Only lines of the same nature and comparable certainty may merge: a formula, a table or a
     // barely-legible fragment must never be absorbed into a neighbouring prose paragraph.
     let previous_class = classify_content(&previous.text, previous.confidence, true);
@@ -893,6 +1056,15 @@ fn starts_new_paragraph(
         return true;
     }
     false
+}
+
+fn block_layout_disposition(block: &ExtractedBlock) -> Option<NarrationDisposition> {
+    let (Some(role), Some(confidence)) = (block.layout_role, block.layout_confidence) else {
+        return None;
+    };
+    (role != LayoutRole::Unknown && confidence.is_finite() && confidence >= 0.30)
+        .then(|| role.narration_disposition())
+        .flatten()
 }
 
 /// Joins the text of consecutive lines, healing the hyphenation the line break introduced.
@@ -1089,6 +1261,7 @@ fn join_heading_continuations(
             head.source_regions.extend(tail.source_regions);
             head.source_block_ids.extend(tail.source_block_ids.clone());
             head.confidence = head.confidence.min(tail.confidence);
+            head.narration_disposition = head.narration_disposition.or(tail.narration_disposition);
             head.decision_trace.extend(tail.decision_trace);
             head.decision_trace.push(NormalizationDecision {
                 rule: "join_heading_continuation".into(),
@@ -1396,16 +1569,8 @@ fn region_is_reliable(region: &SourceRegion) -> bool {
 /// Orders the lines for reading and reports the vertical boundary between columns, when the page
 /// has two of them, so that each column can be measured against its own margins.
 fn order_blocks(blocks: &mut [ExtractedBlock]) -> Option<f64> {
-    let top_down = |left: &ExtractedBlock, right: &ExtractedBlock| {
-        let left_rect = reading_rect(&left.region);
-        let right_rect = reading_rect(&right.region);
-        right_rect[1]
-            .total_cmp(&left_rect[1])
-            .then_with(|| left_rect[0].total_cmp(&right_rect[0]))
-            .then_with(|| left.block_id.cmp(&right.block_id))
-    };
     if blocks.len() < 4 {
-        blocks.sort_by(top_down);
+        blocks.sort_by(top_down_order);
         return None;
     }
 
@@ -1440,13 +1605,126 @@ fn order_blocks(blocks: &mut [ExtractedBlock]) -> Option<f64> {
             let right_column = reading_rect(&right.region)[0] >= boundary;
             left_column
                 .cmp(&right_column)
-                .then_with(|| top_down(left, right))
+                .then_with(|| top_down_order(left, right))
         });
         Some(boundary)
     } else {
-        blocks.sort_by(top_down);
+        blocks.sort_by(top_down_order);
         None
     }
+}
+
+fn top_down_order(left: &ExtractedBlock, right: &ExtractedBlock) -> std::cmp::Ordering {
+    let left_rect = reading_rect(&left.region);
+    let right_rect = reading_rect(&right.region);
+    right_rect[1]
+        .total_cmp(&left_rect[1])
+        .then_with(|| left_rect[0].total_cmp(&right_rect[0]))
+        .then_with(|| left.block_id.cmp(&right.block_id))
+}
+
+fn has_layout_order(block: &ExtractedBlock) -> bool {
+    !block.text.trim().is_empty()
+        && block.layout_order.is_some()
+        && block
+            .layout_confidence
+            .is_some_and(|confidence| confidence.is_finite() && confidence >= 0.30)
+}
+
+fn layout_order_coverage(blocks: &[ExtractedBlock]) -> f64 {
+    let non_empty = blocks
+        .iter()
+        .filter(|block| !block.text.trim().is_empty())
+        .count();
+    if non_empty == 0 {
+        return 0.0;
+    }
+    blocks
+        .iter()
+        .filter(|block| has_layout_order(block))
+        .count() as f64
+        / non_empty as f64
+}
+
+fn order_blocks_by_layout(blocks: &mut [ExtractedBlock]) {
+    blocks.sort_by(|left, right| {
+        let left_key = (
+            left.physical_page_index.unwrap_or(u8::MAX),
+            has_layout_order(left)
+                .then_some(left.layout_order)
+                .flatten()
+                .unwrap_or(u32::MAX),
+        );
+        let right_key = (
+            right.physical_page_index.unwrap_or(u8::MAX),
+            has_layout_order(right)
+                .then_some(right.layout_order)
+                .flatten()
+                .unwrap_or(u32::MAX),
+        );
+        left_key
+            .cmp(&right_key)
+            .then_with(|| top_down_order(left, right))
+    });
+}
+
+fn select_layout_role(group: &[ExtractedBlock]) -> Option<(LayoutRole, f64)> {
+    let mut confidence_by_role = BTreeMap::<LayoutRole, f64>::new();
+    for block in group {
+        let (Some(role), Some(confidence)) = (block.layout_role, block.layout_confidence) else {
+            continue;
+        };
+        if role == LayoutRole::Unknown || !confidence.is_finite() || confidence < 0.30 {
+            continue;
+        }
+        confidence_by_role
+            .entry(role)
+            .and_modify(|current| *current = current.max(confidence))
+            .or_insert(confidence);
+    }
+    let mut roles: Vec<_> = confidence_by_role.into_iter().collect();
+    roles.sort_by(|left, right| {
+        right
+            .1
+            .total_cmp(&left.1)
+            .then_with(|| left.0.cmp(&right.0))
+    });
+    match roles.as_slice() {
+        [] => None,
+        [(role, confidence)] => Some((*role, *confidence)),
+        [(role, confidence), (_, runner_up), ..] if *confidence >= runner_up + 0.10 => {
+            Some((*role, *confidence))
+        }
+        _ => None,
+    }
+}
+
+fn apply_layout_policy(role: LayoutRole) -> Option<(ContentClass, NarrationDisposition)> {
+    let disposition = role.narration_disposition()?;
+    let class = match disposition {
+        NarrationDisposition::Automatic
+            if matches!(
+                role,
+                LayoutRole::DocumentTitle | LayoutRole::FigureTitle | LayoutRole::ParagraphTitle
+            ) =>
+        {
+            ContentClass::Heading
+        }
+        NarrationDisposition::Automatic => ContentClass::Prose,
+        NarrationDisposition::OnDemand if role == LayoutRole::Table => ContentClass::Table,
+        NarrationDisposition::OnDemand
+            if matches!(role, LayoutRole::Formula | LayoutRole::Algorithm) =>
+        {
+            ContentClass::Formula
+        }
+        NarrationDisposition::Never
+            if matches!(role, LayoutRole::Footnote | LayoutRole::VisionFootnote) =>
+        {
+            ContentClass::Note
+        }
+        NarrationDisposition::OnDemand | NarrationDisposition::Never => ContentClass::Unsupported,
+    };
+    Some((class, disposition))
 }
 
 fn join_line_end_hyphens(input: &str) -> (String, bool) {
@@ -1511,7 +1789,7 @@ fn sentence_texts(text: &str) -> Vec<&str> {
     let mut start = 0;
     let mut sentences = Vec::new();
     for (index, character) in text.char_indices() {
-        if matches!(character, '.' | '!' | '?') {
+        if matches!(character, '.' | '!' | '?') && is_prosodic_punctuation(text, index, character) {
             let end = index + character.len_utf8();
             let sentence = text[start..end].trim();
             if !sentence.is_empty() {
@@ -1539,6 +1817,7 @@ fn sentence_unit(
         unit_id: stable_id(page, &paragraph.unit_id, language, ordinal),
         kind: ReadingUnitKind::Sentence,
         content_class: paragraph.content_class,
+        narration_disposition: paragraph.narration_disposition,
         processing_route: paragraph.processing_route,
         order_key: paragraph.order_key.clone(),
         text: text.into(),

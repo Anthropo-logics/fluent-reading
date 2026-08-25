@@ -22,10 +22,11 @@ pub use corpus::{
 };
 pub use extraction::{
     BlockOrderMetric, CharacterErrorMetric, ContentClass, ExtractedBlock, FurnitureEvidence,
-    NormalizationDecision, NormalizedPage, PageExtraction, PageProcessingRecord,
-    PageProcessingStatus, ProcessingRoute, ReadingAnchor, ReadingUnit, ReadingUnitKind,
-    RequestedUnit, SourceRegion, UnitOrderKey, character_error_rate, measure_digital_block_order,
-    normalize_digital_document, normalize_digital_page, select_processing_route,
+    LayoutRole, NarrationDisposition, NormalizationDecision, NormalizedPage, PageExtraction,
+    PageProcessingRecord, PageProcessingStatus, ProcessingRoute, ReadingAnchor, ReadingUnit,
+    ReadingUnitKind, RequestedUnit, SourceRegion, UnitOrderKey, character_error_rate,
+    measure_digital_block_order, normalize_digital_document, normalize_digital_page,
+    select_processing_route,
 };
 pub use gate_a::{
     GateACondition, GateAMetric, GateAMetricName, GateAMetricUnit, GateAProgress, GateAResult,

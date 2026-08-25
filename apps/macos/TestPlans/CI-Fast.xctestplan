@@ -70,6 +70,21 @@
       },
       {
         "enabled": true,
+        "key": "LECTURA_LAYOUT_CASES",
+        "value": "$(LECTURA_LAYOUT_CASES)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_LAYOUT_MODEL_URL",
+        "value": "$(LECTURA_LAYOUT_MODEL_URL)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_LAYOUT_EVIDENCE_PATH",
+        "value": "$(LECTURA_LAYOUT_EVIDENCE_PATH)"
+      },
+      {
+        "enabled": true,
         "key": "LECTURA_EXPORT_EVIDENCE",
         "value": "$(LECTURA_EXPORT_EVIDENCE)"
       },

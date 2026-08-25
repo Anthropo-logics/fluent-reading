@@ -12,6 +12,7 @@ xcrun swiftc \
   -framework AVFoundation \
   -framework PDFKit \
   -o "$output" \
+  "$project_root/apps/macos/MacPlatform/Document/DocumentLayoutServices.swift" \
   "$project_root/apps/macos/MacPlatform/Document/DocumentServices.swift" \
   "$project_root/apps/macos/MacPlatform/Document/PDFGlyphReplay.swift" \
   "$project_root/apps/macos/MacPlatform/Files/FileServices.swift" \

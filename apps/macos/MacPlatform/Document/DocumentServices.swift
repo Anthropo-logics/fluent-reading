@@ -500,6 +500,48 @@ private struct SendablePDFDocument: @unchecked Sendable {
   let value: PDFDocument
 }
 
+private struct SendablePDFPage: @unchecked Sendable {
+  let value: PDFPage
+}
+
+/// Renders through Core Graphics instead of `PDFPage.thumbnail`, which can silently omit JBIG2
+/// image content. The bitmap never leaves memory, and both OCR consumers share this crop-box path.
+enum PDFPageRasterizer {
+  struct Raster {
+    let image: CGImage
+    let pageToPixelTransform: CGAffineTransform
+  }
+
+  static func image(of page: PDFPage, pixelSize: CGSize) -> CGImage? {
+    raster(of: page, pixelSize: pixelSize)?.image
+  }
+
+  static func raster(of page: PDFPage, pixelSize: CGSize) -> Raster? {
+    guard pixelSize.width.isFinite, pixelSize.height.isFinite, pixelSize.width > 0,
+      pixelSize.height > 0, let pageRef = page.pageRef
+    else { return nil }
+    let width = max(1, Int(pixelSize.width.rounded()))
+    let height = max(1, Int(pixelSize.height.rounded()))
+    guard
+      let context = CGContext(
+        data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+        space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+          | CGBitmapInfo.byteOrder32Big.rawValue)
+    else { return nil }
+    let target = CGRect(x: 0, y: 0, width: width, height: height)
+    context.setFillColor(CGColor(gray: 1, alpha: 1))
+    context.fill(target)
+    context.interpolationQuality = .high
+    let pageToPixelTransform = pageRef.getDrawingTransform(
+      .cropBox, rect: target, rotate: 0, preserveAspectRatio: true)
+    context.concatenate(pageToPixelTransform)
+    context.drawPDFPage(pageRef)
+    guard let image = context.makeImage() else { return nil }
+    return Raster(image: image, pageToPixelTransform: pageToPixelTransform)
+  }
+}
+
 public struct DigitalSourceRegion: Codable, Equatable, Sendable {
   public let pageIndex: UInt32
   public let rectPDFPoints: [Double]
@@ -522,16 +564,28 @@ public struct DigitalTextBlock: Codable, Equatable, Sendable {
   public let spokenText: String?
   public let region: DigitalSourceRegion
   public let confidence: Double
+  public let layoutRole: LayoutRole?
+  public let layoutConfidence: Double?
+  public let layoutOrder: UInt32?
+  public let narrationDisposition: NarrationDisposition?
+  public let physicalPageIndex: UInt8?
 
   public init(
     blockID: String, text: String, spokenText: String? = nil, region: DigitalSourceRegion,
-    confidence: Double
+    confidence: Double, layoutRole: LayoutRole? = nil, layoutConfidence: Double? = nil,
+    layoutOrder: UInt32? = nil, narrationDisposition: NarrationDisposition? = nil,
+    physicalPageIndex: UInt8? = nil
   ) {
     self.blockID = blockID
     self.text = text
     self.spokenText = spokenText
     self.region = region
     self.confidence = confidence
+    self.layoutRole = layoutRole
+    self.layoutConfidence = layoutConfidence
+    self.layoutOrder = layoutOrder
+    self.narrationDisposition = narrationDisposition
+    self.physicalPageIndex = physicalPageIndex
   }
 
   enum CodingKeys: String, CodingKey {
@@ -539,6 +593,11 @@ public struct DigitalTextBlock: Codable, Equatable, Sendable {
     case text
     case spokenText = "spoken_text"
     case region, confidence
+    case layoutRole = "layout_role"
+    case layoutConfidence = "layout_confidence"
+    case layoutOrder = "layout_order"
+    case narrationDisposition = "narration_disposition"
+    case physicalPageIndex = "physical_page_index"
   }
 }
 
@@ -547,11 +606,31 @@ public struct DigitalPageResult: Codable, Equatable, Sendable {
   public let status: String
   public let blocks: [DigitalTextBlock]
   public let errorCode: String?
+  public let layoutStatus: String?
+  public let layoutProcessorRevision: String?
+  public let layoutElapsedMilliseconds: UInt64?
+
+  public init(
+    pageIndex: UInt32, status: String, blocks: [DigitalTextBlock], errorCode: String?,
+    layoutStatus: String? = nil, layoutProcessorRevision: String? = nil,
+    layoutElapsedMilliseconds: UInt64? = nil
+  ) {
+    self.pageIndex = pageIndex
+    self.status = status
+    self.blocks = blocks
+    self.errorCode = errorCode
+    self.layoutStatus = layoutStatus
+    self.layoutProcessorRevision = layoutProcessorRevision
+    self.layoutElapsedMilliseconds = layoutElapsedMilliseconds
+  }
 
   enum CodingKeys: String, CodingKey {
     case pageIndex = "page_index"
     case status, blocks
     case errorCode = "error_code"
+    case layoutStatus = "layout_status"
+    case layoutProcessorRevision = "layout_processor_revision"
+    case layoutElapsedMilliseconds = "layout_elapsed_milliseconds"
   }
 }
 
@@ -791,17 +870,29 @@ public enum DocumentServices {
   public static func extractDigitalPage(
     at url: URL, pageIndex: Int, rotation: Int? = nil
   ) async -> DigitalPageResult {
-    await Task.detached(priority: .utility) {
-      autoreleasepool {
-        guard url.isFileURL, let document = PDFDocument(url: url), !document.isLocked else {
-          return DigitalPageResult(
-            pageIndex: UInt32(pageIndex), status: "failed", blocks: [],
-            errorCode: "LF_PDF_UNREADABLE")
-        }
-        apply(rotation, to: document.page(at: pageIndex))
-        return extractDigitalPage(from: document, pageIndex: pageIndex)
+    let extraction = Task.detached(priority: .utility) {
+      guard url.isFileURL, let document = PDFDocument(url: url), !document.isLocked else {
+        return DigitalPageResult(
+          pageIndex: UInt32(pageIndex), status: "failed", blocks: [],
+          errorCode: "LF_PDF_UNREADABLE")
       }
-    }.value
+      guard let page = document.page(at: pageIndex) else {
+        return DigitalPageResult(
+          pageIndex: UInt32(max(0, pageIndex)), status: "failed", blocks: [],
+          errorCode: "LF_PDF_PAGE_MISSING")
+      }
+      apply(rotation, to: page)
+      let text = autoreleasepool { extractDigitalPage(from: document, pageIndex: pageIndex) }
+      guard !Task.isCancelled else { return text }
+      let layout = await classify(
+        SendablePDFPage(value: page), pageIndex: pageIndex, rotation: page.rotation)
+      return result(text, enrichedWith: layout)
+    }
+    return await withTaskCancellationHandler {
+      await extraction.value
+    } onCancel: {
+      extraction.cancel()
+    }
   }
 
   public static func extractDigitalPages(
@@ -829,20 +920,59 @@ public enum DocumentServices {
   public static func extractOCRPage(
     at url: URL, pageIndex: Int, language: String, rotation: Int? = nil
   ) async -> DigitalPageResult {
-    await Task.detached(priority: .utility) {
+    let extraction = Task.detached(priority: .utility) {
       guard url.isFileURL, let document = PDFDocument(url: url), !document.isLocked else {
         return DigitalPageResult(
           pageIndex: UInt32(max(0, pageIndex)), status: "failed", blocks: [],
           errorCode: "LF_PDF_UNREADABLE")
       }
-      apply(rotation, to: document.page(at: pageIndex))
-      return extractOCRPages(
-        from: document, pageIndexes: [pageIndex], language: language
-      ).first
-        ?? DigitalPageResult(
+      guard let page = document.page(at: pageIndex) else {
+        return DigitalPageResult(
           pageIndex: UInt32(max(0, pageIndex)), status: "failed", blocks: [],
+          errorCode: "LF_PDF_PAGE_MISSING")
+      }
+      apply(rotation, to: page)
+      let layout = await classify(
+        SendablePDFPage(value: page), pageIndex: pageIndex, rotation: page.rotation)
+      guard !Task.isCancelled else {
+        return DigitalPageResult(
+          pageIndex: UInt32(pageIndex), status: "failed", blocks: [],
           errorCode: "LF_OCR_RECOGNITION_FAILED")
-    }.value
+      }
+      let text = autoreleasepool {
+        extractOCRPage(
+          from: page, pageIndex: pageIndex, language: language,
+          splitSpread: shouldSplitOCR(for: layout))
+      }
+      return result(text, enrichedWith: layout)
+    }
+    return await withTaskCancellationHandler {
+      await extraction.value
+    } onCancel: {
+      extraction.cancel()
+    }
+  }
+
+  nonisolated private static func result(
+    _ source: DigitalPageResult, enrichedWith layout: DocumentLayoutResult
+  ) -> DigitalPageResult {
+    DigitalPageResult(
+      pageIndex: source.pageIndex, status: source.status,
+      blocks: DocumentLayoutAlignment.enrich(source.blocks, with: layout),
+      errorCode: source.errorCode, layoutStatus: layout.status,
+      layoutProcessorRevision: layout.processorRevision,
+      layoutElapsedMilliseconds: layout.elapsedMilliseconds)
+  }
+
+  nonisolated static func shouldSplitOCR(for layout: DocumentLayoutResult) -> Bool {
+    layout.status == "completed" && layout.physicalPageCount == 2 && !layout.regions.isEmpty
+  }
+
+  nonisolated private static func classify(
+    _ page: SendablePDFPage, pageIndex: Int, rotation: Int
+  ) async -> DocumentLayoutResult {
+    await DocumentLayoutClassifier.shared.classify(
+      at: page.value, pageIndex: pageIndex, rotation: rotation)
   }
 
   nonisolated private static func extractDigitalPage(
@@ -952,14 +1082,12 @@ public enum DocumentServices {
     var removals: [NSRange] = []
     var index = 0
     while index < string.length {
-      guard CharacterSet.decimalDigits.contains(UnicodeScalar(string.character(at: index))!) else {
+      guard isDecimalDigit(string.character(at: index)) else {
         index += 1
         continue
       }
       var end = index + 1
-      while end < string.length,
-        CharacterSet.decimalDigits.contains(UnicodeScalar(string.character(at: end))!)
-      {
+      while end < string.length, isDecimalDigit(string.character(at: end)) {
         end += 1
       }
       let numeral = string.substring(with: NSRange(location: index, length: end - index))
@@ -1000,6 +1128,10 @@ public enum DocumentServices {
     return result == visible ? nil : result
   }
 
+  nonisolated static func isDecimalDigit(_ codeUnit: unichar) -> Bool {
+    UnicodeScalar(codeUnit).map(CharacterSet.decimalDigits.contains) ?? false
+  }
+
   nonisolated public static func extractOCRPages(
     from document: PDFDocument, pageIndexes: Set<Int>, language: String
   ) -> [DigitalPageResult] {
@@ -1009,97 +1141,186 @@ public enum DocumentServices {
           pageIndex: UInt32(pageIndex), status: "failed", blocks: [],
           errorCode: "LF_PDF_PAGE_MISSING")
       }
-      let bounds = page.bounds(for: .cropBox)
-      guard bounds.width > 0, bounds.height > 0 else {
-        return DigitalPageResult(
-          pageIndex: UInt32(pageIndex), status: "failed", blocks: [],
-          errorCode: "LF_PDF_PAGE_INVALID")
-      }
+      return extractOCRPage(
+        from: page, pageIndex: pageIndex, language: language, splitSpread: false)
+    }
+  }
 
-      let targetScale = 300.0 / 72.0
-      let targetPixels = bounds.width * targetScale * bounds.height * targetScale
-      // ponytail: Vision fails above this stable edge on macOS 15; tile pages if
-      // corpus evidence later shows that 3200 px loses required OCR accuracy.
-      let scale = min(
-        targetScale,
-        3200.0 / max(bounds.width, bounds.height),
-        targetPixels > 24_000_000 ? targetScale * sqrt(24_000_000 / targetPixels) : targetScale
-      )
-      let image = page.thumbnail(
-        of: CGSize(width: bounds.width * scale, height: bounds.height * scale), for: .cropBox)
-      guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
-        return DigitalPageResult(
-          pageIndex: UInt32(pageIndex), status: "failed", blocks: [],
-          errorCode: "LF_PDF_RENDER_FAILED")
-      }
+  nonisolated private static func extractOCRPage(
+    from page: PDFPage, pageIndex: Int, language: String, splitSpread: Bool
+  ) -> DigitalPageResult {
+    let bounds = page.bounds(for: .cropBox)
+    guard bounds.width > 0, bounds.height > 0 else {
+      return DigitalPageResult(
+        pageIndex: UInt32(pageIndex), status: "failed", blocks: [],
+        errorCode: "LF_PDF_PAGE_INVALID")
+    }
 
-      let request = VNRecognizeTextRequest()
-      request.recognitionLevel = .accurate
-      request.usesLanguageCorrection = true
-      request.recognitionLanguages = [visionLanguage(language)]
-      do {
-        try VNImageRequestHandler(cgImage: cgImage).perform([request])
-      } catch {
-        return DigitalPageResult(
-          pageIndex: UInt32(pageIndex), status: "failed", blocks: [],
-          errorCode: "LF_OCR_RECOGNITION_FAILED")
-      }
-
-      let blocks = (request.results ?? [])
-        .compactMap { observation -> (VNRecognizedTextObservation, VNRecognizedText)? in
-          observation.topCandidates(1).first.map { (observation, $0) }
-        }
-        .sorted {
-          if abs($0.0.boundingBox.midY - $1.0.boundingBox.midY) > 0.01 {
-            return $0.0.boundingBox.midY > $1.0.boundingBox.midY
+    let targetScale = 300.0 / 72.0
+    let targetPixels = bounds.width * targetScale * bounds.height * targetScale
+    // ponytail: Vision fails above this stable edge on macOS 15; tile pages if
+    // corpus evidence later shows that 3200 px loses required OCR accuracy.
+    let scale = min(
+      targetScale,
+      3200.0 / max(bounds.width, bounds.height),
+      targetPixels > 24_000_000 ? targetScale * sqrt(24_000_000 / targetPixels) : targetScale
+    )
+    let halves: [(String?, CGRect)] =
+      splitSpread
+      ? [
+        ("left", CGRect(x: 0, y: 0, width: 0.5, height: 1)),
+        ("right", CGRect(x: 0.5, y: 0, width: 0.5, height: 1)),
+      ]
+      : [(nil, CGRect(x: 0, y: 0, width: 1, height: 1))]
+    let thumbnail = page.thumbnail(
+      of: CGSize(width: bounds.width * scale, height: bounds.height * scale), for: .cropBox)
+    let primary = thumbnail.cgImage(forProposedRect: nil, context: nil, hints: nil)
+    do {
+      let primaryBlocks =
+        try primary.map { image in
+          try halves.map { half, regionOfInterest in
+            try recognizeOCRBlocks(
+              in: image, page: page, pageIndex: pageIndex, language: language, bounds: bounds,
+              half: half, regionOfInterest: regionOfInterest, fallbackRaster: nil)
           }
-          return $0.0.boundingBox.minX < $1.0.boundingBox.minX
+        } ?? halves.map { _ in [] }
+      let resolution: (blocks: [DigitalTextBlock], hasUnresolvedHalf: Bool)
+      var primaryRenderFailed = false
+      if primaryBlocks.contains(where: \.isEmpty) {
+        let pixelSize = ocrRenderSize(pageBounds: bounds, rotation: page.rotation, scale: scale)
+        if let fallback = PDFPageRasterizer.raster(of: page, pixelSize: pixelSize) {
+          resolution = try resolveOCRHalfBlocks(primary: primaryBlocks) { halfIndex in
+            let (half, regionOfInterest) = halves[halfIndex]
+            return try recognizeOCRBlocks(
+              in: fallback.image, page: page, pageIndex: pageIndex, language: language,
+              bounds: bounds, half: half, regionOfInterest: regionOfInterest,
+              fallbackRaster: fallback)
+          }
+        } else {
+          primaryRenderFailed = primary == nil
+          resolution = resolveOCRHalfBlocks(primary: primaryBlocks, fallback: nil)
         }
-        .enumerated()
-        .map { blockIndex, value in
-          let observation = value.0
-          let recognized = value.1
-          return DigitalTextBlock(
-            blockID: "page-\(pageIndex)-ocr-\(blockIndex)",
-            text: recognized.string,
-            region: DigitalSourceRegion(
-              pageIndex: UInt32(pageIndex),
-              rectPDFPoints: pageSpaceRect(observation.boundingBox, on: page, within: bounds),
-              pageRotationDegrees: page.rotation,
-              sourceToPageTransform: [1, 0, 0, 1, 0, 0],
-              confidence: Double(recognized.confidence)
-            ),
-            confidence: Double(recognized.confidence)
-          )
-        }
-      // A page that renders and recognises without throwing but yields no text is a blank page
-      // (title versos, section separators): valid content, not a failure. Only genuine technical
-      // faults above — missing page, invalid bounds, render failure, Vision throwing — report
-      // "failed", so the reader is never blocked by an unrecoverable error it cannot retry away.
+      } else {
+        resolution = (primaryBlocks.flatMap { $0 }, false)
+      }
+      let unresolvedSpreadHalf = splitSpread && resolution.hasUnresolvedHalf
+      let status =
+        primaryRenderFailed
+        ? "failed"
+        : ocrResultStatus(
+          blocks: resolution.blocks, hasUnresolvedHalf: unresolvedSpreadHalf,
+          renderedBelowTargetScale: scale < targetScale)
       return DigitalPageResult(
         pageIndex: UInt32(pageIndex),
-        status: !blocks.isEmpty && scale < targetScale ? "degraded" : "completed",
-        blocks: blocks,
-        errorCode: nil
-      )
+        status: status, blocks: resolution.blocks,
+        errorCode: primaryRenderFailed
+          ? "LF_PDF_RENDER_FAILED"
+          : status == "failed" ? "LF_OCR_INCOMPLETE_SPREAD" : nil)
+    } catch {
+      return DigitalPageResult(
+        pageIndex: UInt32(pageIndex), status: "failed", blocks: [],
+        errorCode: "LF_OCR_RECOGNITION_FAILED")
     }
+  }
+
+  nonisolated private static func recognizeOCRBlocks(
+    in image: CGImage, page: PDFPage, pageIndex: Int, language: String, bounds: CGRect,
+    half: String?, regionOfInterest: CGRect, fallbackRaster: PDFPageRasterizer.Raster?
+  ) throws -> [DigitalTextBlock] {
+    let request = VNRecognizeTextRequest()
+    request.recognitionLevel = .accurate
+    request.usesLanguageCorrection = true
+    request.recognitionLanguages = [visionLanguage(language)]
+    request.regionOfInterest = regionOfInterest
+    try VNImageRequestHandler(cgImage: image).perform([request])
+    let prefix = "page-\(pageIndex)-ocr" + (half.map { "-\($0)" } ?? "")
+    return (request.results ?? [])
+      .compactMap { observation -> (VNRecognizedTextObservation, VNRecognizedText)? in
+        observation.topCandidates(1).first.map { (observation, $0) }
+      }
+      .sorted {
+        if abs($0.0.boundingBox.midY - $1.0.boundingBox.midY) > 0.01 {
+          return $0.0.boundingBox.midY > $1.0.boundingBox.midY
+        }
+        return $0.0.boundingBox.minX < $1.0.boundingBox.minX
+      }
+      .enumerated()
+      .map { blockIndex, value in
+        let observation = value.0
+        let recognized = value.1
+        let fullImageBox = DocumentLayoutPostprocessor.fullImageRect(
+          observation.boundingBox, within: regionOfInterest)
+        let rect =
+          fallbackRaster.map { pageSpaceRect(fullImageBox, raster: $0) }
+          ?? pageSpaceRect(fullImageBox, on: page, within: bounds)
+        return DigitalTextBlock(
+          blockID: "\(prefix)-\(blockIndex)", text: recognized.string,
+          region: DigitalSourceRegion(
+            pageIndex: UInt32(pageIndex), rectPDFPoints: rect,
+            pageRotationDegrees: page.rotation,
+            sourceToPageTransform: [1, 0, 0, 1, 0, 0],
+            confidence: Double(recognized.confidence)),
+          confidence: Double(recognized.confidence))
+      }
+  }
+
+  nonisolated static func resolveOCRHalfBlocks(
+    primary: [[DigitalTextBlock]],
+    fallback: ((Int) throws -> [DigitalTextBlock])?
+  ) rethrows -> (blocks: [DigitalTextBlock], hasUnresolvedHalf: Bool) {
+    var resolved: [DigitalTextBlock] = []
+    var hasUnresolvedHalf = false
+    for halfIndex in primary.indices {
+      let blocks =
+        primary[halfIndex].isEmpty
+        ? try fallback?(halfIndex) ?? []
+        : primary[halfIndex]
+      hasUnresolvedHalf = hasUnresolvedHalf || blocks.isEmpty
+      resolved += blocks
+    }
+    return (resolved, hasUnresolvedHalf)
+  }
+
+  nonisolated static func ocrResultStatus(
+    blocks: [DigitalTextBlock], hasUnresolvedHalf: Bool, renderedBelowTargetScale: Bool
+  ) -> String {
+    if hasUnresolvedHalf { return blocks.isEmpty ? "failed" : "degraded" }
+    return !blocks.isEmpty && renderedBelowTargetScale ? "degraded" : "completed"
+  }
+
+  nonisolated static func ocrRenderSize(
+    pageBounds: CGRect, rotation: Int, scale: CGFloat
+  ) -> CGSize {
+    let turn = ((rotation % 360) + 360) % 360
+    return turn % 180 == 0
+      ? CGSize(width: pageBounds.width * scale, height: pageBounds.height * scale)
+      : CGSize(width: pageBounds.height * scale, height: pageBounds.width * scale)
   }
 
   /// Where a box Vision reported sits in the page's own coordinates.
   ///
-  /// `PDFPage.thumbnail(of:for:)` renders the page **as it is displayed** — it applies the page's
-  /// `/Rotate` — while `bounds(for: .cropBox)` reports the box in unrotated PDF user space. On a
-  /// quarter-turned page the two disagree about which dimension is which, and scaling Vision's
-  /// normalised box by the wrong one put every recognised line somewhere it is not: on
-  /// `Goldberg2002` p5 (`/Rotate 90`, crop 593 x 824) a line whose ink runs 633 pt down the page
-  /// came back as a box 456 pt wide and 34 pt tall. Highlighting, "read from here" and the
-  /// engine's own reading order all take that rectangle at its word.
+  /// Core Graphics renders the page **as it is displayed** — including the page's `/Rotate` —
+  /// while `bounds(for: .cropBox)` reports unrotated PDF user space. The rasterizer retains the
+  /// native PDF-to-pixel transform so Vision's normalised image box can be projected back through
+  /// its exact inverse, including crop-box origins and quarter turns.
   ///
   /// Verified against the same page's embedded text layer, whose boxes come straight from PDFKit
   /// in page space: after this mapping the two agree.
   ///
-  /// An upright page is returned exactly as before — the quarter turn is the identity there — so
-  /// the 63,000 unrotated pages of the reference corpus are untouched.
+  /// This deliberately shares the transform that rendered the bitmap instead of maintaining a
+  /// second rotation table that can drift from Core Graphics.
+  nonisolated private static func pageSpaceRect(
+    _ normalized: CGRect, raster: PDFPageRasterizer.Raster
+  ) -> [Double] {
+    let pixels = CGRect(
+      x: normalized.minX * CGFloat(raster.image.width),
+      y: normalized.minY * CGFloat(raster.image.height),
+      width: normalized.width * CGFloat(raster.image.width),
+      height: normalized.height * CGFloat(raster.image.height))
+    let page = pixels.applying(raster.pageToPixelTransform.inverted()).standardized
+    return [page.minX, page.minY, page.width, page.height].map(Double.init)
+  }
+
   nonisolated private static func pageSpaceRect(
     _ normalized: CGRect, on page: PDFPage, within bounds: CGRect
   ) -> [Double] {

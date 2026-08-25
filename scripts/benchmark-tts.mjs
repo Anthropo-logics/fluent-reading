@@ -3,10 +3,11 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 
-import { punctuatedIpa, runEspeak } from "./spoken-normalize.mjs";
+import { legacyIpaChunks, punctuatedIpa, runEspeak } from "./spoken-normalize.mjs";
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((pairs, value, index, all) => {
@@ -32,15 +33,37 @@ let text = readFileSync(join(corpusRoot, source.path), "utf8")
   .replace(/\s+/g, " ")
   .trim();
 if (text.split(/\s+/).length !== passage.word_count) throw new Error("passage word count drifted");
-const wordLimit = args["word-limit"] ? Number(args["word-limit"]) : passage.word_count;
-if (!Number.isSafeInteger(wordLimit) || wordLimit < 1 || wordLimit > passage.word_count) {
+const sentenceIndex = args["sentence-index"] === undefined ? null : Number(args["sentence-index"]);
+if (sentenceIndex !== null) {
+  if (!Number.isSafeInteger(sentenceIndex) || sentenceIndex < 0) throw new Error("invalid --sentence-index");
+  const sentences = [...new Intl.Segmenter(args.language, { granularity: "sentence" }).segment(text)]
+    .map(({ segment }) => segment.trim()).filter(Boolean);
+  if (!sentences[sentenceIndex]) throw new Error("sentence index out of range");
+  text = sentences[sentenceIndex];
+}
+const availableWords = text.split(/\s+/).length;
+const wordLimit = args["word-limit"] ? Number(args["word-limit"]) : availableWords;
+if (!Number.isSafeInteger(wordLimit) || wordLimit < 1 || wordLimit > availableWords) {
   throw new Error("invalid --word-limit");
 }
 text = text.split(/\s+/).slice(0, wordLimit).join(" ");
 const rawIPA = candidate.model_id === "kokoro-82m-4bit";
+const frontend = args.frontend ?? "current";
+if (!["current", "legacy"].includes(frontend) || (frontend === "legacy" && !rawIPA)) {
+  throw new Error("invalid --frontend");
+}
 const synthesisText = rawIPA
-  ? punctuatedIpa(text, args.language, runEspeak)
+  ? frontend === "legacy"
+    ? runEspeak(text, args.language === "pt" ? "pt-br" : args.language === "en" ? "en-us" : "es").trim()
+    : punctuatedIpa(text, args.language, runEspeak)
   : text;
+const stimulusID = sentenceIndex === null ? passage.id : `${passage.id}-sentence-${sentenceIndex}`;
+const units = rawIPA && frontend === "legacy"
+  ? legacyIpaChunks(synthesisText).map((chunk, index) => ({
+    unit_id: `${stimulusID}-legacy-${index}`,
+    text: chunk,
+  }))
+  : [{ unit_id: stimulusID, text: synthesisText }];
 
 const modelRoot = process.env.LECTURA_MODEL_ROOT;
 if (!modelRoot) throw new Error("missing LECTURA_MODEL_ROOT");
@@ -64,7 +87,7 @@ const request = {
   voice_id: candidate.voices[args.language],
   language: args.language,
   raw_ipa: rawIPA,
-  units: [{ unit_id: passage.id, text: synthesisText }],
+  units,
 };
 writeFileSync(requestPath, JSON.stringify(request));
 
@@ -125,22 +148,36 @@ const result = event.result;
 const segments = result.segments;
 const anomalies = [];
 if (result.omitted_unit_ids.length) anomalies.push("omitted_unit");
-let expectedOffset = 0;
+const unitState = new Map(request.units.map((unit, index) => [unit.unit_id, {
+  index, nextSegment: 0, nextOffset: 0,
+}]));
+let lastUnitIndex = 0;
+let expectedSamples = 0;
 for (const [index, segment] of segments.entries()) {
-  if (segment.unit_id !== passage.id) anomalies.push(`wrong_unit:${index}`);
-  if (segment.segment_index !== index) anomalies.push(`segment_order:${index}`);
-  if (segment.unit_sample_offset !== expectedOffset) anomalies.push(`sample_gap:${index}`);
-  expectedOffset += segment.sample_count;
+  const state = unitState.get(segment.unit_id);
+  if (!state || state.index < lastUnitIndex) anomalies.push(`wrong_unit:${index}`);
+  if (state && segment.segment_index !== state.nextSegment) anomalies.push(`segment_order:${index}`);
+  if (state && segment.unit_sample_offset !== state.nextOffset) anomalies.push(`sample_gap:${index}`);
+  if (state) {
+    state.nextSegment += 1;
+    state.nextOffset += segment.sample_count;
+    lastUnitIndex = state.index;
+  }
+  expectedSamples += segment.sample_count;
 }
 const audioSource = result.audio_path;
-const audioName = `${candidate.model_id}-${args.language}-${passage.id}.wav`;
+const audioName = `${candidate.model_id}-${args.language}-${stimulusID}-${frontend}.wav`;
 const audioTarget = join(outputDir, audioName);
 cpSync(audioSource, audioTarget);
 const ownedRoot = dirname(audioSource);
-if (basename(ownedRoot).startsWith("lectura-tts-cli-")) rmSync(ownedRoot, { recursive: true, force: true });
+if (dirname(ownedRoot) === resolve(tmpdir()) && basename(ownedRoot).startsWith("lectura-tts-cli-")) {
+  rmSync(ownedRoot, { recursive: true, force: true });
+}
 const audioHash = createHash("sha256").update(readFileSync(audioTarget)).digest("hex");
-const durationSeconds = expectedOffset / segments[0].sample_rate_hz;
-if (passage.long && durationSeconds < 600) anomalies.push("duration_below_10_minutes");
+const durationSeconds = expectedSamples / segments[0].sample_rate_hz;
+if (passage.long && sentenceIndex === null && wordLimit === passage.word_count && durationSeconds < 600) {
+  anomalies.push("duration_below_10_minutes");
+}
 const silenceProbe = spawnSync("/opt/homebrew/bin/ffmpeg", [
   "-hide_banner", "-nostats", "-i", audioTarget, "-af", "silencedetect=noise=-50dB:d=2", "-f", "null", "-",
 ], { encoding: "utf8" });
@@ -151,7 +188,7 @@ if (longSilences.some((seconds) => seconds >= 2)) anomalies.push("long_silence")
 
 const metrics = segments.map((segment) => ({
   run_id: basename(outputDir), candidate_id: candidate.model_id, language: args.language,
-  passage_id: passage.id, unit_id: segment.unit_id, segment_index: segment.segment_index,
+  passage_id: stimulusID, unit_id: segment.unit_id, segment_index: segment.segment_index,
   elapsed_ms: segment.elapsed_ms, sample_count: segment.sample_count,
   sample_rate_hz: segment.sample_rate_hz,
   audio_seconds: segment.sample_count / segment.sample_rate_hz,
@@ -163,9 +200,11 @@ const summary = {
   schema_version: 1, status: anomalies.length ? "failed" : "completed",
   candidate_id: candidate.model_id, model_revision: candidate.model_revision,
   runtime_id: candidate.runtime_id, runtime_version: candidate.runtime_version,
-  language: args.language, voice_id: candidate.voices[args.language], passage_id: passage.id,
+  language: args.language, voice_id: candidate.voices[args.language], passage_id: stimulusID,
   input_word_count: wordLimit,
-  spoken_frontend: rawIPA ? `espeak-ng-1.52.0-${args.language === "pt" ? "pt-br" : args.language === "en" ? "en-us" : "es"}` : "runtime-default",
+  spoken_frontend: rawIPA
+    ? `${frontend}-espeak-ng-1.52.0-${args.language === "pt" ? "pt-br" : args.language === "en" ? "en-us" : "es"}`
+    : "runtime-default",
   offline_enforced: true, wall_ms: wallMs, fragment_count: segments.length,
   first_fragment_ms: segments[0].elapsed_ms,
   median_fragment_ms: [...segments].map((item) => item.elapsed_ms).sort((a, b) => a - b)[Math.floor(segments.length / 2)],

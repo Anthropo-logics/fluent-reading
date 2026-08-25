@@ -7,6 +7,23 @@ La versión que muestra el panel «Acerca de» sale de `MARKETING_VERSION` y
 `CURRENT_PROJECT_VERSION` del proyecto de Xcode. Al preparar una versión hay que subir ambos y
 añadir aquí su sección.
 
+## [0.4.0] — 2026-08-25 (build 4)
+
+### Añadido
+
+- Clasificación estructural local con PP-DocLayoutV3/Core ML para orientar el orden de lectura,
+  columnas, pliegos, notas, cabeceras, pies y folios sin sustituir el texto fiel de PDFKit/Vision.
+- Degradación conservadora: regiones vacías, insuficientes o inciertas conservan el texto fuente
+  como contenido audible y trazable.
+
+### Corregido
+
+- La narración mantiene frases y pausas naturales mediante una única planificación prosódica para
+  lectura y exportación, validada por el propietario en un A/B Kokoro ES/EN/PT sin degradación.
+- El fallback OCR conserva cada mitad válida de un pliego y recupera páginas JBIG2 que el thumbnail
+  de PDFKit puede renderizar sin tinta.
+- Cancelar o cambiar de documento termina también los procesos activos de eSpeak y Kokoro.
+
 ## [0.3.0] — 2026-08-25 (build 3)
 
 ### Añadido

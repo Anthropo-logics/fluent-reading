@@ -1,7 +1,7 @@
 NOTICE — Componentes de terceros de Lectura Fluida
 Third-party notices for Lectura Fluida / Fluent Reading / Leitura Fluída
 
-Actualizado: 2026-08-22
+Actualizado: 2026-08-25
 
 El código propio de esta aplicación es software libre bajo GPL-3.0-or-later; véase el archivo
 LICENSE. Este archivo inventaría los componentes de terceros que la aplicación empaqueta, enlaza,
@@ -21,10 +21,24 @@ Fuente de estos datos: los manifiestos verificados de `models/manifests/`, que l
 por sha256 antes de instalar cualquier artefacto. El panel "Acerca de" de la aplicación muestra esta
 misma información leída en tiempo de ejecución del manifiesto real, no de esta tabla.
 
-Ningún modelo se empaqueta dentro del instalador: el dispositivo del lector los descarga bajo demanda
-desde su repositorio público de origen, a la carpeta que el propio lector elige.
+Los modelos de voz y traducción no se empaquetan dentro del instalador: el dispositivo del lector
+los descarga bajo demanda desde su repositorio público de origen, a la carpeta que el propio lector
+elige. El clasificador estructural PP-DocLayoutV3 sí viaja dentro de la aplicación y se verifica
+contra su manifiesto de integridad antes de publicarse en el bundle.
 
 --------------------------------------------------------------------------------
+pp-doclayout-v3-coreml — clasificación estructural de documentos (PP-DocLayoutV3)
+  Licencia declarada .... Apache-2.0
+  Procedencia ........... PaddlePaddle
+  Origen ................ https://huggingface.co/PaddlePaddle/PP-DocLayoutV3_safetensors
+  Revisión .............. 97d101e6db2642e162a1d05392d1b0231c91033e
+  SHA-256 pesos fuente .. 5ea422c6cc5fe759a47e1357c35639b58173508e025a3131cbe4b6ac59e2b85e
+  Runtime ............... Core ML, macOS 15+
+  Precisión ............. FP32
+  Archivo distribuido ... Contents/Resources/PPDocLayoutV3-fp32.mlmodelc
+  Texto de licencia ..... Contents/Resources/PPDocLayoutV3-Apache-2.0.txt
+  NOTICE de origen ...... No existe en la revisión fijada (auditoría de archivos del repositorio)
+
 kokoro-82m-4bit — voz (TTS)
   Licencia declarada .... Apache-2.0
   Procedencia ........... hexgrad, mlx-community

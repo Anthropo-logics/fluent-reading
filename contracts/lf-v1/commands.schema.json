@@ -45,10 +45,7 @@
             "furniture_pages": {
               "type": "array",
               "maxItems": 64,
-              "items": {
-                "type": "object",
-                "required": ["document_fingerprint", "generation_id", "page_index", "blocks"]
-              }
+              "items": { "$ref": "#/$defs/page_extraction" }
             }
           },
           "additionalProperties": false
@@ -74,10 +71,7 @@
           "type": "object",
           "required": ["page", "language", "requested_unit", "route", "adapter_status"],
           "properties": {
-            "page": {
-              "type": "object",
-              "required": ["document_fingerprint", "generation_id", "page_index", "blocks"]
-            },
+            "page": { "$ref": "#/$defs/page_extraction" },
             "language": { "enum": ["es", "en", "pt"] },
             "requested_unit": { "enum": ["paragraph", "sentence"] },
             "route": { "enum": ["direct_text", "ocr"] },
@@ -100,5 +94,50 @@
       }
     }
   ],
+  "$defs": {
+    "source_region": {
+      "type": "object",
+      "required": ["page_index", "rect_pdf_points", "page_rotation_degrees", "source_to_page_transform", "confidence"],
+      "properties": {
+        "page_index": { "type": "integer", "minimum": 0 },
+        "rect_pdf_points": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "type": "number" } },
+        "page_rotation_degrees": { "type": "integer", "minimum": -360, "maximum": 360 },
+        "source_to_page_transform": { "type": "array", "minItems": 6, "maxItems": 6, "items": { "type": "number" } },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "extracted_block": {
+      "type": "object",
+      "required": ["block_id", "text", "region", "confidence"],
+      "properties": {
+        "block_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "text": { "type": "string" },
+        "spoken_text": { "type": ["string", "null"] },
+        "region": { "$ref": "#/$defs/source_region" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "layout_role": {
+          "type": "string",
+          "enum": ["abstract", "algorithm", "aside_text", "chart", "content", "formula", "doc_title", "figure_title", "footer", "footnote", "formula_number", "header", "image", "number", "paragraph_title", "reference", "reference_content", "seal", "table", "text", "vision_footnote", "unknown"]
+        },
+        "layout_confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "layout_order": { "type": "integer", "minimum": 0 },
+        "narration_disposition": { "enum": ["automatic", "on_demand", "never"] },
+        "physical_page_index": { "type": "integer", "minimum": 0, "maximum": 255 }
+      },
+      "additionalProperties": false
+    },
+    "page_extraction": {
+      "type": "object",
+      "required": ["document_fingerprint", "generation_id", "page_index", "blocks"],
+      "properties": {
+        "document_fingerprint": { "type": "string", "minLength": 1 },
+        "generation_id": { "type": "string", "minLength": 1 },
+        "page_index": { "type": "integer", "minimum": 0 },
+        "blocks": { "type": "array", "items": { "$ref": "#/$defs/extracted_block" } }
+      },
+      "additionalProperties": false
+    }
+  },
   "additionalProperties": true
 }

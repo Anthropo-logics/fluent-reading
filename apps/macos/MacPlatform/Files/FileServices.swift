@@ -18,7 +18,8 @@ public final class ReadAccessGrant {
 
   /// `rotation`, when given, is the orientation the reader chose for this page: the extraction
   /// opens its own copy of the file and turns that page before reading it, so the narration
-  /// follows the same axis the reader sees. The file on disk is not touched.
+  /// follows the same axis the reader sees. The file on disk is not touched. Native layout may
+  /// annotate and reorder the PDFKit blocks, but never replaces their text.
   public func extractDigitalPage(
     _ pageIndex: Int, rotation: Int? = nil
   ) async -> DigitalPageResult {

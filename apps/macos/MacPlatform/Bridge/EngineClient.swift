@@ -53,6 +53,28 @@ public enum EngineClient {
       voiceId: request.voiceId, language: request.language, rawIPA: true, units: units)
   }
 
+  public static func phonemizedRequestCancellable(
+    _ request: TTSSynthesisRequest, engineURL: URL?, dataRoot: URL
+  ) async throws -> TTSSynthesisRequest {
+    guard request.modelId == "kokoro-82m-4bit", !request.rawIPA, let engineURL else {
+      return request
+    }
+    var units = [TTSUnitRequest]()
+    for unit in request.units {
+      try Task.checkCancellation()
+      guard
+        let plan = try? spokenPlan(text: unit.text, language: request.language),
+        let phonemes = try await phonemizeCancellable(
+          plan, engineURL: engineURL, dataRoot: dataRoot)
+      else { return request }
+      units.append(TTSUnitRequest(unitId: unit.unitId, text: phonemes))
+    }
+    return TTSSynthesisRequest(
+      modelId: request.modelId, modelRevision: request.modelRevision,
+      runtimeId: request.runtimeId, runtimeVersion: request.runtimeVersion,
+      voiceId: request.voiceId, language: request.language, rawIPA: true, units: units)
+  }
+
   private static func phonemize(
     _ plan: LFSpokenPlan, engineURL: URL, dataRoot: URL
   ) -> String? {
@@ -61,6 +83,32 @@ public enum EngineClient {
       if part.kind == "punctuation" {
         output.append(part.value)
       } else if let value = ModelServices.phonemize(
+        part.value, language: plan.frontendVoice, engineURL: engineURL, dataRoot: dataRoot)
+      {
+        output.append(value)
+      } else {
+        return nil
+      }
+    }
+    return output.joined(separator: " ")
+      .replacingOccurrences(of: " ,", with: ",")
+      .replacingOccurrences(of: " .", with: ".")
+      .replacingOccurrences(of: " ;", with: ";")
+      .replacingOccurrences(of: " :", with: ":")
+      .replacingOccurrences(of: " !", with: "!")
+      .replacingOccurrences(of: " ?", with: "?")
+      .replacingOccurrences(of: " —", with: "—")
+  }
+
+  private static func phonemizeCancellable(
+    _ plan: LFSpokenPlan, engineURL: URL, dataRoot: URL
+  ) async throws -> String? {
+    var output = [String]()
+    for part in plan.parts {
+      try Task.checkCancellation()
+      if part.kind == "punctuation" {
+        output.append(part.value)
+      } else if let value = try await ModelServices.phonemizeCancellable(
         part.value, language: plan.frontendVoice, engineURL: engineURL, dataRoot: dataRoot)
       {
         output.append(value)
