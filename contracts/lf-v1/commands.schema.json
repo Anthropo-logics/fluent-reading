@@ -7,7 +7,7 @@
   "properties": {
     "schema_version": { "const": 1 },
     "request_id": { "type": "string", "minLength": 1, "maxLength": 256 },
-    "command": { "enum": ["canary", "open_document", "plan_session", "mutate_session", "normalize_page", "tts_synthesize", "gate_a_run"] },
+    "command": { "enum": ["canary", "plan_spoken_text", "open_document", "plan_session", "mutate_session", "normalize_page", "tts_synthesize", "gate_a_run"] },
     "payload": { "type": "object" }
   },
   "oneOf": [
@@ -15,6 +15,20 @@
       "properties": {
         "command": { "const": "canary" },
         "payload": { "type": "object", "maxProperties": 0 }
+      }
+    },
+    {
+      "properties": {
+        "command": { "const": "plan_spoken_text" },
+        "payload": {
+          "type": "object",
+          "required": ["text", "language"],
+          "properties": {
+            "text": { "type": "string", "minLength": 1, "maxLength": 100000 },
+            "language": { "enum": ["es", "en", "pt"] }
+          },
+          "additionalProperties": false
+        }
       }
     },
     {
@@ -27,7 +41,15 @@
             "access_grant_id": { "type": "string", "minLength": 1, "maxLength": 256 },
             "document_fingerprint": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
             "page_count": { "type": "integer", "minimum": 1 },
-            "first_page_ms": { "type": "integer", "minimum": 0 }
+            "first_page_ms": { "type": "integer", "minimum": 0 },
+            "furniture_pages": {
+              "type": "array",
+              "maxItems": 64,
+              "items": {
+                "type": "object",
+                "required": ["document_fingerprint", "generation_id", "page_index", "blocks"]
+              }
+            }
           },
           "additionalProperties": false
         }

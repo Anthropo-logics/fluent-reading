@@ -36,6 +36,7 @@ fn normalizes_only_universal_forms_without_mutating_the_reading_unit() {
                 local_index: 0,
             },
             text: source.into(),
+            spoken_text: source.into(),
             source_regions: vec![],
             source_block_ids: vec![],
             parent_unit_id: None,
@@ -66,6 +67,20 @@ fn preserves_prosodic_punctuation_and_final_phoneme_input_contract() {
         ]
     );
     assert_eq!(espeak_stdin("adelante"), "adelante\n");
+}
+
+#[test]
+fn decimals_and_abbreviations_stay_inside_the_phonetic_span() {
+    let plan = spoken_plan("Dr. Pérez citó el art. 59.1 en 2011; eran 20,5%.", "es").unwrap();
+    assert_eq!(
+        plan.parts,
+        vec![
+            SpokenPart::Text("Dr. Pérez citó el art. 59.1 en 2011".into()),
+            SpokenPart::Punctuation(";".into()),
+            SpokenPart::Text("eran 20,5%".into()),
+            SpokenPart::Punctuation(".".into()),
+        ]
+    );
 }
 
 #[test]

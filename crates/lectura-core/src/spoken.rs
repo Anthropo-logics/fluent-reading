@@ -88,7 +88,7 @@ fn split_parts(text: &str) -> Vec<SpokenPart> {
     let mut start = 0;
     let mut punctuation = None;
     for (index, character) in text.char_indices() {
-        let is_punctuation = matches!(character, ',' | '.' | ';' | ':' | '!' | '?');
+        let is_punctuation = is_prosodic_punctuation(text, index, character);
         match (punctuation, is_punctuation) {
             (None, true) => {
                 push_text(&mut parts, &text[start..index]);
@@ -110,6 +110,54 @@ fn split_parts(text: &str) -> Vec<SpokenPart> {
         push_text(&mut parts, &text[start..]);
     }
     parts
+}
+
+fn is_prosodic_punctuation(text: &str, index: usize, character: char) -> bool {
+    if !matches!(character, ',' | '.' | ';' | ':' | '!' | '?' | '—') {
+        return false;
+    }
+    let before = text[..index].chars().next_back();
+    let after = text[index + character.len_utf8()..].chars().next();
+    if matches!(character, ',' | '.' | ':')
+        && before.is_some_and(char::is_numeric)
+        && after.is_some_and(char::is_numeric)
+    {
+        return false;
+    }
+    if character != '.' {
+        return true;
+    }
+    if before.is_some_and(char::is_alphabetic) && after.is_some_and(char::is_alphabetic) {
+        return false;
+    }
+    let token = text[..index]
+        .split_whitespace()
+        .next_back()
+        .unwrap_or_default()
+        .trim_matches(|value: char| !value.is_alphanumeric() && value != '.');
+    let abbreviation = token.contains('.')
+        || matches!(
+            token.to_lowercase().as_str(),
+            "mr" | "mrs"
+                | "ms"
+                | "dr"
+                | "dra"
+                | "prof"
+                | "sr"
+                | "sra"
+                | "srta"
+                | "art"
+                | "arts"
+                | "no"
+                | "núm"
+                | "vol"
+                | "fig"
+                | "p"
+                | "pp"
+                | "cf"
+                | "vs"
+        );
+    !abbreviation
 }
 
 fn push_text(parts: &mut Vec<SpokenPart>, text: &str) {

@@ -49,6 +49,8 @@ pub const SCHEMA_VERSION: u32 = 1;
 pub const CORE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 static NEXT_JOB_ID: AtomicU64 = AtomicU64::new(1);
+const REMEMBERED_FURNITURE_DOCUMENTS: usize = 4;
+static FURNITURE_DOCUMENTS: Mutex<Vec<(String, FurnitureEvidence)>> = Mutex::new(Vec::new());
 
 #[derive(Debug, Deserialize)]
 struct RequestEnvelope {
@@ -93,6 +95,7 @@ pub enum EventResult {
     TtsSynthesized(TtsSynthesisResult),
     TranslationCompleted(TranslationResult),
     GateACompleted(Box<GateAResult>),
+    SpokenPlan(SpokenPlan),
     IncrementalSession(IncrementalSession),
     NormalizedPage(NormalizedPage),
 }
@@ -377,25 +380,39 @@ fn observe_page_furniture(
     fingerprint: &str,
     page: &PageExtraction,
 ) -> (PageExtraction, Vec<NormalizationDecision>) {
-    const REMEMBERED_DOCUMENTS: usize = 4;
-    static DOCUMENTS: Mutex<Vec<(String, FurnitureEvidence)>> = Mutex::new(Vec::new());
-
-    let Ok(mut documents) = DOCUMENTS.lock() else {
+    let Ok(mut documents) = FURNITURE_DOCUMENTS.lock() else {
         return (page.clone(), Vec::new());
     };
+    let evidence = remembered_furniture(&mut documents, fingerprint);
+    evidence.observe(page);
+    evidence.strip(page)
+}
+
+fn prime_page_furniture(fingerprint: &str, pages: &[PageExtraction]) {
+    let Ok(mut documents) = FURNITURE_DOCUMENTS.lock() else {
+        return;
+    };
+    let evidence = remembered_furniture(&mut documents, fingerprint);
+    for page in pages {
+        evidence.observe(page);
+    }
+}
+
+fn remembered_furniture<'a>(
+    documents: &'a mut Vec<(String, FurnitureEvidence)>,
+    fingerprint: &str,
+) -> &'a mut FurnitureEvidence {
     let position = match documents.iter().position(|(known, _)| known == fingerprint) {
         Some(position) => position,
         None => {
-            if documents.len() == REMEMBERED_DOCUMENTS {
+            if documents.len() == REMEMBERED_FURNITURE_DOCUMENTS {
                 documents.remove(0);
             }
             documents.push((fingerprint.to_owned(), FurnitureEvidence::default()));
             documents.len() - 1
         }
     };
-    let evidence = &mut documents[position].1;
-    evidence.observe(page);
-    evidence.strip(page)
+    &mut documents[position].1
 }
 
 /// The name a document's derived data is filed under, taken from the document itself.
@@ -450,6 +467,24 @@ pub fn handle_request(input: &[u8]) -> Result<EventEnvelope, RequestError> {
                 message: "lectura-core ready".into(),
             })
         }
+        "plan_spoken_text" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Payload {
+                text: String,
+                language: String,
+            }
+
+            let payload: Payload = serde_json::from_value(request.payload)
+                .map_err(|_| RequestError::InvalidPayload)?;
+            if payload.text.trim().is_empty() || payload.text.len() > 100_000 {
+                return Err(RequestError::InvalidPayload);
+            }
+            EventResult::SpokenPlan(
+                spoken_plan(&payload.text, &payload.language)
+                    .map_err(|_| RequestError::InvalidPayload)?,
+            )
+        }
         "open_document" => {
             #[derive(Deserialize)]
             #[serde(deny_unknown_fields)]
@@ -458,6 +493,8 @@ pub fn handle_request(input: &[u8]) -> Result<EventEnvelope, RequestError> {
                 document_fingerprint: String,
                 page_count: u32,
                 first_page_ms: u64,
+                #[serde(default)]
+                furniture_pages: Vec<PageExtraction>,
             }
 
             let payload: Payload = serde_json::from_value(request.payload)
@@ -465,6 +502,14 @@ pub fn handle_request(input: &[u8]) -> Result<EventEnvelope, RequestError> {
             if payload.access_grant_id.is_empty()
                 || payload.access_grant_id.len() > 256
                 || payload.page_count == 0
+                || payload.furniture_pages.len() > 64
+                || payload.furniture_pages.iter().any(|page| {
+                    page.document_fingerprint != payload.document_fingerprint
+                        || page.page_index >= payload.page_count
+                        || page.generation_id.is_empty()
+                        || page.generation_id.len() > 128
+                        || page.blocks.len() > 10_000
+                })
             {
                 return Err(RequestError::InvalidPayload);
             }
@@ -472,6 +517,7 @@ pub fn handle_request(input: &[u8]) -> Result<EventEnvelope, RequestError> {
             else {
                 return Err(RequestError::InvalidPayload);
             };
+            prime_page_furniture(&payload.document_fingerprint, &payload.furniture_pages);
             EventResult::DocumentOpened(DocumentOpenedResult {
                 document_id,
                 access_grant_id: payload.access_grant_id,

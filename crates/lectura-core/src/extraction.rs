@@ -18,6 +18,8 @@ pub struct SourceRegion {
 pub struct ExtractedBlock {
     pub block_id: String,
     pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spoken_text: Option<String>,
     pub region: SourceRegion,
     pub confidence: f64,
 }
@@ -98,6 +100,7 @@ pub struct ReadingUnit {
     pub processing_route: ProcessingRoute,
     pub order_key: UnitOrderKey,
     pub text: String,
+    pub spoken_text: String,
     pub source_regions: Vec<SourceRegion>,
     pub source_block_ids: Vec<String>,
     pub parent_unit_id: Option<String>,
@@ -284,6 +287,28 @@ pub fn normalize_digital_page(
         }
     }
 
+    // Once a numbered note begins, every following group in that column belongs to the same
+    // apparatus, including a marker PDFKit split from its citation and "5. Id."-style short notes.
+    let mut footnote_zone_start = [None, None];
+    for index in 0..groups.len() {
+        let Some(first) = groups[index].first() else {
+            continue;
+        };
+        let column = usize::from(in_second_column(first));
+        let Some(metrics) = metrics_for(first) else {
+            continue;
+        };
+        let text = join_paragraph_text(
+            &groups[index]
+                .iter()
+                .map(|block| block.text.clone())
+                .collect::<Vec<_>>(),
+        );
+        if group_is_footnote(&groups, index, metrics, &text) {
+            footnote_zone_start[column].get_or_insert(index);
+        }
+    }
+
     let mut paragraphs = Vec::with_capacity(groups.len());
     let mut folio_omissions: Vec<NormalizationDecision> = Vec::new();
     for index in 0..groups.len() {
@@ -292,12 +317,23 @@ pub fn normalize_digital_page(
         let geometry_reliable = group.iter().all(|block| region_is_reliable(&block.region));
         let mut decision_trace = Vec::new();
         let mut line_texts = Vec::with_capacity(group.len());
+        let mut spoken_line_texts = Vec::with_capacity(group.len());
         for block in &group {
-            let (text, trace) = normalize_text(block);
+            let (text, spoken_text, trace) = normalize_text(block);
             line_texts.push(text);
+            spoken_line_texts.push(spoken_text);
             decision_trace.extend(trace);
         }
         let text = join_paragraph_text(&line_texts);
+        let mut spoken_text = join_paragraph_text(&spoken_line_texts);
+        if let Some(projection) = table_of_contents_spoken_text(&text) {
+            spoken_text = projection;
+            decision_trace.push(NormalizationDecision {
+                rule: "omit_toc_leader_and_folio_from_narration".into(),
+                confidence: 1.0,
+                affected_segments: group.iter().map(|block| block.block_id.clone()).collect(),
+            });
+        }
         let affected: Vec<String> = group.iter().map(|block| block.block_id.clone()).collect();
         // A passage that is nothing but a short number is the printed folio. Reading it aloud
         // interrupted the prose and, in the continuous immersion scroll, it sat stranded between
@@ -354,12 +390,12 @@ pub fn normalize_digital_page(
                 region
             })
             .collect();
+        let column = usize::from(in_second_column(first));
+        let inside_footnote_zone = footnote_zone_start[column].is_some_and(|start| index >= start);
         let content_class = match metrics_for(first) {
+            Some(_) if inside_footnote_zone => ContentClass::Note,
             Some(metrics) if group_is_heading(&groups, index, metrics, &text) => {
                 ContentClass::Heading
-            }
-            Some(metrics) if group_is_footnote(&groups, index, metrics, &text) => {
-                ContentClass::Note
             }
             _ => classify_content(&text, confidence, geometry_reliable),
         };
@@ -374,6 +410,7 @@ pub fn normalize_digital_page(
                 local_index: index as u32,
             },
             text,
+            spoken_text,
             source_regions: regions,
             source_block_ids: affected,
             parent_unit_id: None,
@@ -477,8 +514,12 @@ enum PageEdge {
 /// from page to page even though the number and the time change on every one. Comparing the literal
 /// text — what the previous rule did — never matched anything that carried a page number, which is
 /// most of the furniture a book actually prints.
+fn furniture_literal(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 fn furniture_template(text: &str) -> String {
-    let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let collapsed = furniture_literal(text);
     let mut masked = String::with_capacity(collapsed.len());
     let mut inside_digits = false;
     for character in collapsed.chars() {
@@ -495,14 +536,14 @@ fn furniture_template(text: &str) -> String {
     masked
 }
 
-/// The lines printed at the very top and the very bottom of the page, in the order they are read
-/// down the page. Two lines per margin is what a running head plus a folio, or an imprint line
-/// plus a date stamp, take up. The depth never reaches past the middle of the page, so on a page
-/// that holds nothing but its own footer the two margins cannot claim the same line twice.
+/// The clusters printed at the very top and bottom of a page. Editorial furniture may span three
+/// or four lines and a detached folio may leave one large gap inside the cluster; the second large
+/// gap stops it before body text, while half-page/cap bounds keep both margins from claiming the
+/// same line.
 fn edge_blocks(page: &PageExtraction) -> Vec<(usize, PageEdge)> {
     let count = page.blocks.len();
-    let depth = (count / 2).min(2);
-    if depth == 0 {
+    let max_depth = (count / 2).min(6);
+    if max_depth == 0 {
         return Vec::new();
     }
     let mut order: Vec<usize> = (0..count).collect();
@@ -518,14 +559,42 @@ fn edge_blocks(page: &PageExtraction) -> Vec<(usize, PageEdge)> {
                     .cmp(&page.blocks[*right].block_id)
             })
     });
-    (0..depth)
-        .flat_map(|slot| {
-            [
-                (order[slot], PageEdge::Header),
-                (order[count - 1 - slot], PageEdge::Footer),
-            ]
-        })
-        .collect()
+    let typical_height = percentile(
+        page.blocks
+            .iter()
+            .map(|block| reading_rect(&block.region)[3])
+            .collect(),
+        0.5,
+    )
+    .unwrap_or(0.0);
+    let gap_limit = typical_height * 3.0;
+    let centre = |index: usize| {
+        let rect = reading_rect(&page.blocks[index].region);
+        rect[1] + rect[3] / 2.0
+    };
+    let mut edges = Vec::new();
+    let mut gaps = 0;
+    for slot in 0..max_depth {
+        if slot > 0 && (centre(order[slot - 1]) - centre(order[slot])).abs() > gap_limit {
+            gaps += 1;
+            if gaps > 1 {
+                break;
+            }
+        }
+        edges.push((order[slot], PageEdge::Header));
+    }
+    gaps = 0;
+    for slot in 0..max_depth {
+        let index = count - 1 - slot;
+        if slot > 0 && (centre(order[index + 1]) - centre(order[index])).abs() > gap_limit {
+            gaps += 1;
+            if gaps > 1 {
+                break;
+            }
+        }
+        edges.push((order[index], PageEdge::Footer));
+    }
+    edges
 }
 
 /// Horizontal reach of the page's text, used as the yardstick for "this line is far shorter than a
@@ -570,6 +639,7 @@ struct FurnitureTally {
 #[derive(Debug, Default, Clone)]
 pub struct FurnitureEvidence {
     tallies: BTreeMap<String, FurnitureTally>,
+    exact_pages: BTreeMap<String, BTreeSet<u32>>,
     seen_pages: BTreeSet<u32>,
     eligible: [usize; 2],
 }
@@ -591,6 +661,10 @@ impl FurnitureEvidence {
             if template.trim().is_empty() {
                 continue;
             }
+            self.exact_pages
+                .entry(furniture_literal(&block.text))
+                .or_default()
+                .insert(page.page_index);
             let tally = self.tallies.entry(template).or_default();
             tally.pages.insert(page.page_index);
             match edge {
@@ -608,25 +682,31 @@ impl FurnitureEvidence {
 
     fn qualified(&self) -> BTreeMap<&str, PageEdge> {
         let total = self.eligible[0] + self.eligible[1];
+        let repeats = |pages: &BTreeSet<u32>| {
+            let mut parity = [0_usize; 2];
+            for page_index in pages {
+                parity[(page_index % 2) as usize] += 1;
+            }
+            5 * pages.len() >= 3 * total
+                || (0..2)
+                    .any(|side| parity[side] >= 3 && 5 * parity[side] >= 3 * self.eligible[side])
+        };
         self.tallies
             .iter()
             .filter_map(|(template, tally)| {
                 let seen = tally.pages.len();
-                let mut parity = [0_usize; 2];
-                for page_index in &tally.pages {
-                    parity[(page_index % 2) as usize] += 1;
-                }
-                let majority = 5 * seen >= 3 * total
-                    || (0..2).any(|side| {
-                        parity[side] >= 3 && 5 * parity[side] >= 3 * self.eligible[side]
-                    });
-                let qualifies = if template.contains('#') {
+                let exact_repeat = self.exact_pages.iter().any(|(literal, pages)| {
+                    furniture_template(literal) == *template && pages.len() >= 3 && repeats(pages)
+                });
+                let qualifies = if exact_repeat {
+                    true
+                } else if template.contains('#') {
                     seen >= 3
-                        && majority
-                        && template.chars().count() <= 80
+                        && repeats(&tally.pages)
+                        && template.chars().count() <= 120
                         && tally.narrow >= tally.wide
                 } else {
-                    (seen >= 2 && seen == total) || (seen >= 3 && majority)
+                    (seen >= 2 && seen == total) || (seen >= 3 && repeats(&tally.pages))
                 };
                 qualifies.then(|| {
                     let edge = if tally.footers >= tally.headers {
@@ -673,10 +753,13 @@ impl FurnitureEvidence {
     }
 }
 
-fn normalize_text(block: &ExtractedBlock) -> (String, Vec<NormalizationDecision>) {
+fn normalize_text(block: &ExtractedBlock) -> (String, String, Vec<NormalizationDecision>) {
     let (mut text, changed_hyphen) = join_line_end_hyphens(&block.text);
     text = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    let trace = changed_hyphen
+    let (mut spoken_text, _) =
+        join_line_end_hyphens(block.spoken_text.as_deref().unwrap_or(block.text.as_str()));
+    spoken_text = spoken_text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut trace: Vec<_> = changed_hyphen
         .then(|| NormalizationDecision {
             rule: "join_line_end_hyphen".into(),
             confidence: block.confidence.clamp(0.0, 1.0),
@@ -684,12 +767,20 @@ fn normalize_text(block: &ExtractedBlock) -> (String, Vec<NormalizationDecision>
         })
         .into_iter()
         .collect();
-    (text, trace)
+    if spoken_text != text {
+        trace.push(NormalizationDecision {
+            rule: "omit_matched_footnote_callout_from_narration".into(),
+            confidence: block.confidence.clamp(0.0, 1.0),
+            affected_segments: vec![block.block_id.clone()],
+        });
+    }
+    (text, spoken_text, trace)
 }
 
 /// Page-level typography derived from the extracted lines, used to decide where paragraphs break.
 struct PageMetrics {
     median_height: f64,
+    body_height: f64,
     min_left: f64,
     max_right: f64,
 }
@@ -703,6 +794,13 @@ fn page_metrics<'a>(blocks: impl IntoIterator<Item = &'a ExtractedBlock>) -> Opt
         return None;
     }
     let median_height = median_line_height(&reliable)?;
+    let body_height = percentile(
+        reliable
+            .iter()
+            .map(|block| reading_rect(&block.region)[3])
+            .collect(),
+        0.75,
+    )?;
     // The margins have to be the *typical* ones, not the extreme ones. Taking the outermost line
     // let a single stray element decide the whole page: the printer's slug line at the foot of a
     // book page sits far to the left of the text block, and once `min_left` came from it every
@@ -727,6 +825,7 @@ fn page_metrics<'a>(blocks: impl IntoIterator<Item = &'a ExtractedBlock>) -> Opt
     )?;
     (min_left.is_finite() && max_right.is_finite() && max_right > min_left).then_some(PageMetrics {
         median_height,
+        body_height,
         min_left,
         max_right,
     })
@@ -985,6 +1084,8 @@ fn join_heading_continuations(
             let tail = paragraphs.remove(index + 1);
             let head = &mut paragraphs[index];
             head.text = joined;
+            head.spoken_text =
+                join_paragraph_text(&[head.spoken_text.clone(), tail.spoken_text.clone()]);
             head.source_regions.extend(tail.source_regions);
             head.source_block_ids.extend(tail.source_block_ids.clone());
             head.confidence = head.confidence.min(tail.confidence);
@@ -1005,6 +1106,9 @@ fn classify_content(text: &str, confidence: f64, geometry_reliable: bool) -> Con
     }
     if text.contains('\t') || text.contains('|') {
         return ContentClass::Table;
+    }
+    if table_of_contents_spoken_text(text).is_some() {
+        return ContentClass::Prose;
     }
     let non_text = text
         .chars()
@@ -1032,10 +1136,9 @@ fn classify_content(text: &str, confidence: f64, geometry_reliable: bool) -> Con
 ///
 /// The literal prefixes [`classify_content`] looks for ("nota al pie", "footnote") never occur in a
 /// real book, so the note has to be recognised the way a reader recognises it: a short numeral that
-/// opens the line, down in the bottom band of the page, with body text still above it. Font size
-/// would be the strongest signal, but the extracted blocks do not carry it and plumbing it through
-/// would cross the FFI contract, so the line height of the group is used as a weak stand-in — a
-/// note is never set larger than the body.
+/// opens the line, down in the bottom band of the page, with body text still above it. For digital
+/// text, a style-confirmed callout is also carried in `spoken_text`; line height remains the
+/// conservative fallback for OCR and untagged layers.
 ///
 /// Deliberately conservative: a note left unmarked is merely read aloud, while body prose marked as
 /// a note would be silently skipped, and losing audible content is the worse failure.
@@ -1053,7 +1156,7 @@ fn group_is_footnote(
         return false;
     }
     let trimmed = text.trim();
-    if trimmed.chars().count() < 25 || !starts_with_note_numeral(trimmed) {
+    if table_of_contents_spoken_text(trimmed).is_some() || !starts_with_note_numeral(trimmed) {
         return false;
     }
     let reliable = || {
@@ -1074,8 +1177,9 @@ fn group_is_footnote(
     if !floor.is_finite() || !ceiling.is_finite() || ceiling <= floor {
         return false;
     }
-    // The note apparatus lives in the bottom quarter of the printed area. A numbered list that
-    // happens to run through the middle of the page is not a note.
+    // A short apparatus lives in the bottom quarter. A dense one can rise above it, but only while
+    // its smaller type continues down to a numbered note in that band and its numeral is actually
+    // called from the body. Those extra signals keep a numbered list in the body audible.
     let band = floor + (ceiling - floor) * 0.25;
     let group_top = group
         .iter()
@@ -1084,15 +1188,56 @@ fn group_is_footnote(
             rect[1] + rect[3]
         })
         .fold(f64::NEG_INFINITY, f64::max);
-    if group_top > band {
-        return false;
-    }
     let group_height = group
         .iter()
         .map(|block| reading_rect(&block.region)[3] / block.text.lines().count().max(1) as f64)
         .fold(0.0_f64, f64::max);
     if group_height > metrics.median_height * 1.25 {
         return false;
+    }
+    let Some(numeral) = opening_note_numeral(trimmed) else {
+        return false;
+    };
+    let has_styled_callouts = groups
+        .iter()
+        .flatten()
+        .any(|block| block.spoken_text.is_some());
+    let called_from_styled_body = groups[..index].iter().flatten().any(|block| {
+        contains_note_callout(&block.text, numeral)
+            && block
+                .spoken_text
+                .as_deref()
+                .is_some_and(|spoken| spoken != block.text)
+    });
+    if has_styled_callouts && !called_from_styled_body {
+        return false;
+    }
+    if group_top > band {
+        let called_from_body = called_from_styled_body
+            || groups[..index]
+                .iter()
+                .flatten()
+                .any(|block| contains_note_callout(&block.text, numeral));
+        let smaller_type = group_height <= metrics.body_height * 0.9;
+        let reaches_bottom_note = groups[index + 1..].iter().any(|candidate| {
+            let candidate_text = join_paragraph_text(
+                &candidate
+                    .iter()
+                    .map(|block| block.text.clone())
+                    .collect::<Vec<_>>(),
+            );
+            let candidate_top = candidate
+                .iter()
+                .map(|block| {
+                    let rect = reading_rect(&block.region);
+                    rect[1] + rect[3]
+                })
+                .fold(f64::NEG_INFINITY, f64::max);
+            candidate_top <= band && starts_with_note_numeral(candidate_text.trim())
+        });
+        if !called_from_body || !smaller_type || !reaches_bottom_note {
+            return false;
+        }
     }
     // Something has to be annotated. Without body text above it, the numbered line is the page's
     // own content — an index, a list of contents — and skipping it would lose the page entirely.
@@ -1109,16 +1254,87 @@ fn group_is_footnote(
 /// directly by a capitalised word. A four-digit year, a decimal figure and a date ("3 de mayo") are
 /// all rejected on purpose.
 fn starts_with_note_numeral(text: &str) -> bool {
+    opening_note_numeral(text).is_some()
+}
+
+fn opening_note_numeral(text: &str) -> Option<&str> {
     let digits = text.chars().take_while(char::is_ascii_digit).count();
     if !(1..=3).contains(&digits) {
-        return false;
+        return None;
     }
     let mut rest = text.chars().skip(digits);
-    match rest.next() {
-        Some('.') | Some(')') | Some(']') => rest.next() == Some(' '),
+    let valid = match rest.next() {
+        Some('.') | Some(')') | Some(']') => rest.next().is_none_or(char::is_whitespace),
         Some(' ') => rest.next().is_some_and(char::is_uppercase),
         _ => false,
+    };
+    valid.then_some(&text[..digits])
+}
+
+fn contains_note_callout(text: &str, numeral: &str) -> bool {
+    text.match_indices(numeral).any(|(start, matched)| {
+        let before = text[..start].chars().next_back();
+        let before_before = text[..start]
+            .chars()
+            .rev()
+            .nth(1)
+            .filter(|_| before == Some('.'));
+        let after = text[start + matched.len()..].chars().next();
+        let attached = before.is_some_and(|character| {
+            character.is_alphabetic()
+                || matches!(character, ')' | ']')
+                || (character == '.' && before_before.is_some_and(|value| !value.is_ascii_digit()))
+        });
+        attached && after.is_none_or(|character| !character.is_ascii_digit())
+    })
+}
+
+/// A table-of-contents title followed by a dotted leader and its destination page. The dots are
+/// navigation furniture, not mathematical notation; the visible line remains unchanged.
+fn table_of_contents_spoken_text(text: &str) -> Option<String> {
+    let bytes = text.as_bytes();
+    let mut output = String::with_capacity(text.len());
+    let mut cursor = 0;
+    let mut index = 0;
+    let mut changed = false;
+    while index < bytes.len() {
+        if bytes[index] != b'.' {
+            index += 1;
+            continue;
+        }
+        let mut dots_end = index;
+        while dots_end < bytes.len() && bytes[dots_end] == b'.' {
+            dots_end += 1;
+        }
+        if dots_end - index >= 3 {
+            let mut page_start = dots_end;
+            while page_start < bytes.len() && bytes[page_start].is_ascii_whitespace() {
+                page_start += 1;
+            }
+            let mut page_end = page_start;
+            while page_end < bytes.len() && bytes[page_end].is_ascii_digit() {
+                page_end += 1;
+            }
+            let title = &text[cursor..index];
+            if page_end > page_start
+                && title.contains(char::is_alphabetic)
+                && (page_end == bytes.len() || bytes[page_end].is_ascii_whitespace())
+            {
+                output.push_str(title.trim_end());
+                output.push(' ');
+                cursor = page_end;
+                index = page_end;
+                changed = true;
+                continue;
+            }
+        }
+        index = dots_end;
     }
+    if !changed {
+        return None;
+    }
+    output.push_str(&text[cursor..]);
+    Some(output.split_whitespace().collect::<Vec<_>>().join(" "))
 }
 
 /// A unit that is nothing but a short number is the printed page folio, not something to read
@@ -1263,25 +1479,52 @@ fn split_sentences(
     language: &str,
     paragraph: &ReadingUnit,
 ) -> Vec<ReadingUnit> {
+    if table_of_contents_spoken_text(&paragraph.text).is_some() {
+        return vec![sentence_unit(
+            page,
+            language,
+            paragraph,
+            &paragraph.text,
+            &paragraph.spoken_text,
+            0,
+        )];
+    }
+    let visible = sentence_texts(&paragraph.text);
+    let spoken = sentence_texts(&paragraph.spoken_text);
+    visible
+        .into_iter()
+        .enumerate()
+        .map(|(ordinal, text)| {
+            sentence_unit(
+                page,
+                language,
+                paragraph,
+                text,
+                spoken.get(ordinal).copied().unwrap_or(text),
+                ordinal as u32,
+            )
+        })
+        .collect()
+}
+
+fn sentence_texts(text: &str) -> Vec<&str> {
     let mut start = 0;
-    let mut ordinal = 0;
-    let mut units = Vec::new();
-    for (index, character) in paragraph.text.char_indices() {
+    let mut sentences = Vec::new();
+    for (index, character) in text.char_indices() {
         if matches!(character, '.' | '!' | '?') {
             let end = index + character.len_utf8();
-            let text = paragraph.text[start..end].trim();
-            if !text.is_empty() {
-                units.push(sentence_unit(page, language, paragraph, text, ordinal));
-                ordinal += 1;
+            let sentence = text[start..end].trim();
+            if !sentence.is_empty() {
+                sentences.push(sentence);
             }
             start = end;
         }
     }
-    let remainder = paragraph.text[start..].trim();
+    let remainder = text[start..].trim();
     if !remainder.is_empty() {
-        units.push(sentence_unit(page, language, paragraph, remainder, ordinal));
+        sentences.push(remainder);
     }
-    units
+    sentences
 }
 
 fn sentence_unit(
@@ -1289,6 +1532,7 @@ fn sentence_unit(
     language: &str,
     paragraph: &ReadingUnit,
     text: &str,
+    spoken_text: &str,
     ordinal: u32,
 ) -> ReadingUnit {
     ReadingUnit {
@@ -1298,6 +1542,7 @@ fn sentence_unit(
         processing_route: paragraph.processing_route,
         order_key: paragraph.order_key.clone(),
         text: text.into(),
+        spoken_text: spoken_text.into(),
         source_regions: paragraph.source_regions.clone(),
         source_block_ids: paragraph.source_block_ids.clone(),
         parent_unit_id: Some(paragraph.unit_id.clone()),

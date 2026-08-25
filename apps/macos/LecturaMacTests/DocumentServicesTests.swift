@@ -221,6 +221,19 @@ final class DocumentServicesTests: XCTestCase {
   }
 
   @MainActor
+  func testMatchedSuperscriptCalloutIsOmittedOnlyFromSpokenText() throws {
+    let url = try makeFootnoteCalloutPDF()
+    defer { try? FileManager.default.removeItem(at: url) }
+    let document = try DocumentServices.openReadOnly(at: url)
+
+    let page = DocumentServices.extractDigitalPages(from: document)[0]
+    let body = try XCTUnwrap(page.blocks.first(where: { $0.text.contains("fuente1") }))
+
+    XCTAssertEqual(body.text, "En 2011 hubo 20 casos; la fuente1 confirmó 59.1%.")
+    XCTAssertEqual(body.spokenText, "En 2011 hubo 20 casos; la fuente confirmó 59.1%.")
+  }
+
+  @MainActor
   func testDigitalExtractionHonorsPageLimit() throws {
     let url = try makeTextPDF()
     defer { try? FileManager.default.removeItem(at: url) }
@@ -517,6 +530,35 @@ final class DocumentServicesTests: XCTestCase {
       context.textPosition = origin
       CTLineDraw(line, context)
     }
+    context.endPDFPage()
+    context.closePDF()
+    return url
+  }
+
+  private func makeFootnoteCalloutPDF() throws -> URL {
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+      .appendingPathExtension("pdf")
+    let consumer = try XCTUnwrap(CGDataConsumer(url: url as CFURL))
+    var mediaBox = CGRect(x: 0, y: 0, width: 500, height: 700)
+    let context = try XCTUnwrap(CGContext(consumer: consumer, mediaBox: &mediaBox, nil))
+    context.beginPDFPage(nil)
+
+    let body = NSMutableAttributedString(
+      string: "En 2011 hubo 20 casos; la fuente1 confirmó 59.1%.",
+      attributes: [.font: NSFont.systemFont(ofSize: 14)])
+    let source = (body.string as NSString).range(of: "fuente1")
+    let callout = NSRange(location: NSMaxRange(source) - 1, length: 1)
+    body.addAttributes(
+      [.font: NSFont.systemFont(ofSize: 8), .baselineOffset: 5], range: callout)
+    context.textPosition = CGPoint(x: 50, y: 600)
+    CTLineDraw(CTLineCreateWithAttributedString(body), context)
+
+    let note = NSAttributedString(
+      string: "1. Referencia bibliográfica de control.",
+      attributes: [.font: NSFont.systemFont(ofSize: 9)])
+    context.textPosition = CGPoint(x: 50, y: 60)
+    CTLineDraw(CTLineCreateWithAttributedString(note), context)
     context.endPDFPage()
     context.closePDF()
     return url

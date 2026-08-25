@@ -112,6 +112,7 @@ run_test() {
     -testPlan CI-Fast \
     "${xcode_derived_data_args[@]+"${xcode_derived_data_args[@]}"}" \
     -destination 'platform=macOS,arch=arm64' \
+    -parallel-testing-enabled NO \
     CODE_SIGNING_ALLOWED=YES \
     CODE_SIGN_IDENTITY=- \
     SWIFT_TREAT_WARNINGS_AS_ERRORS=YES

@@ -21,6 +21,63 @@ public enum EngineClient {
     )
   }
 
+  public static func spokenPlan(text: String, language: String) throws -> LFSpokenPlan {
+    let request: [String: Any] = [
+      "schema_version": 1,
+      "request_id": "req_macos_spoken_plan",
+      "command": "plan_spoken_text",
+      "payload": ["text": text, "language": language],
+    ]
+    let event = try invoke(JSONSerialization.data(withJSONObject: request, options: [.sortedKeys]))
+    guard let plan = event.result?.spokenPlan else { throw EngineClientError.invalidResponse }
+    return plan
+  }
+
+  public static func phonemizedRequest(
+    _ request: TTSSynthesisRequest, engineURL: URL?, dataRoot: URL
+  ) -> TTSSynthesisRequest {
+    guard request.modelId == "kokoro-82m-4bit", !request.rawIPA, let engineURL else {
+      return request
+    }
+    var units = [TTSUnitRequest]()
+    for unit in request.units {
+      guard
+        let plan = try? spokenPlan(text: unit.text, language: request.language),
+        let phonemes = phonemize(plan, engineURL: engineURL, dataRoot: dataRoot)
+      else { return request }
+      units.append(TTSUnitRequest(unitId: unit.unitId, text: phonemes))
+    }
+    return TTSSynthesisRequest(
+      modelId: request.modelId, modelRevision: request.modelRevision,
+      runtimeId: request.runtimeId, runtimeVersion: request.runtimeVersion,
+      voiceId: request.voiceId, language: request.language, rawIPA: true, units: units)
+  }
+
+  private static func phonemize(
+    _ plan: LFSpokenPlan, engineURL: URL, dataRoot: URL
+  ) -> String? {
+    var output = [String]()
+    for part in plan.parts {
+      if part.kind == "punctuation" {
+        output.append(part.value)
+      } else if let value = ModelServices.phonemize(
+        part.value, language: plan.frontendVoice, engineURL: engineURL, dataRoot: dataRoot)
+      {
+        output.append(value)
+      } else {
+        return nil
+      }
+    }
+    return output.joined(separator: " ")
+      .replacingOccurrences(of: " ,", with: ",")
+      .replacingOccurrences(of: " .", with: ".")
+      .replacingOccurrences(of: " ;", with: ";")
+      .replacingOccurrences(of: " :", with: ":")
+      .replacingOccurrences(of: " !", with: "!")
+      .replacingOccurrences(of: " ?", with: "?")
+      .replacingOccurrences(of: " —", with: "—")
+  }
+
   #if compiler(>=6.2)
     @concurrent
   #endif
@@ -31,13 +88,25 @@ public enum EngineClient {
     accessGrantID: String,
     documentFingerprint: String,
     pageCount: UInt32,
-    firstPageMilliseconds: UInt64
+    firstPageMilliseconds: UInt64,
+    furniturePages: [DigitalPageResult] = []
   ) async throws -> LFEvent {
+    let encoder = JSONEncoder()
+    encoder.keyEncodingStrategy = .convertToSnakeCase
+    let sampledPages: [[String: Any]] = try furniturePages.map { page in
+      [
+        "document_fingerprint": documentFingerprint,
+        "generation_id": "generation_\(documentFingerprint.prefix(16))",
+        "page_index": Int(page.pageIndex),
+        "blocks": try JSONSerialization.jsonObject(with: encoder.encode(page.blocks)),
+      ]
+    }
     let payload: [String: Any] = [
       "access_grant_id": accessGrantID,
       "document_fingerprint": documentFingerprint,
       "page_count": pageCount,
       "first_page_ms": firstPageMilliseconds,
+      "furniture_pages": sampledPages,
     ]
     let request: [String: Any] = [
       "schema_version": 1,

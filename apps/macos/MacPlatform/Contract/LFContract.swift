@@ -67,6 +67,30 @@ public struct LFCanaryResult: Codable, Equatable, Sendable {
   }
 }
 
+public struct LFSpokenPart: Codable, Equatable, Sendable {
+  public let kind: String
+  public let value: String
+
+  public init(kind: String, value: String) {
+    self.kind = kind
+    self.value = value
+  }
+}
+
+public struct LFSpokenPlan: Codable, Equatable, Sendable {
+  public let language: String
+  public let frontendVoice: String
+  public let normalizedText: String
+  public let parts: [LFSpokenPart]
+
+  enum CodingKeys: String, CodingKey {
+    case language
+    case frontendVoice = "frontend_voice"
+    case normalizedText = "normalized_text"
+    case parts
+  }
+}
+
 public struct LFDocumentOpenedResult: Codable, Equatable, Sendable {
   public let documentID: String
   public let accessGrantID: String
@@ -137,6 +161,7 @@ public struct LFReadingUnit: Codable, Equatable, Sendable {
   public let processingRoute: String
   public let orderKey: LFJSONValue
   public let text: String
+  public let spokenText: String?
   public let sourceRegions: [DigitalSourceRegion]
   public let sourceBlockIDs: [String]
   public let parentUnitID: String?
@@ -150,12 +175,15 @@ public struct LFReadingUnit: Codable, Equatable, Sendable {
     case processingRoute = "processing_route"
     case orderKey = "order_key"
     case text
+    case spokenText = "spoken_text"
     case sourceRegions = "source_regions"
     case sourceBlockIDs = "source_block_ids"
     case parentUnitID = "parent_unit_id"
     case confidence
     case decisionTrace = "decision_trace"
   }
+
+  public var narrationText: String { spokenText ?? text }
 }
 
 public struct LFPageProcessingRecord: Codable, Equatable, Sendable {
@@ -190,12 +218,18 @@ public struct LFNormalizedPage: Codable, Equatable, Sendable {
 
 public enum LFResult: Codable, Equatable, Sendable {
   case canary(LFCanaryResult)
+  case spokenPlan(LFSpokenPlan)
   case documentOpened(LFDocumentOpenedResult)
   case incrementalSession(LFIncrementalSessionResult)
   case normalizedPage(LFNormalizedPage)
 
   public var canary: LFCanaryResult? {
     guard case .canary(let result) = self else { return nil }
+    return result
+  }
+
+  public var spokenPlan: LFSpokenPlan? {
+    guard case .spokenPlan(let result) = self else { return nil }
     return result
   }
 
@@ -218,6 +252,8 @@ public enum LFResult: Codable, Equatable, Sendable {
     let container = try decoder.singleValueContainer()
     if let result = try? container.decode(LFCanaryResult.self) {
       self = .canary(result)
+    } else if let result = try? container.decode(LFSpokenPlan.self) {
+      self = .spokenPlan(result)
     } else if let result = try? container.decode(LFDocumentOpenedResult.self) {
       self = .documentOpened(result)
     } else if let result = try? container.decode(LFIncrementalSessionResult.self) {
@@ -231,6 +267,7 @@ public enum LFResult: Codable, Equatable, Sendable {
     var container = encoder.singleValueContainer()
     switch self {
     case .canary(let result): try container.encode(result)
+    case .spokenPlan(let result): try container.encode(result)
     case .documentOpened(let result): try container.encode(result)
     case .incrementalSession(let result): try container.encode(result)
     case .normalizedPage(let result): try container.encode(result)

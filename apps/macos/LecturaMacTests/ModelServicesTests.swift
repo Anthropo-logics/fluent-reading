@@ -1177,28 +1177,39 @@ final class ModelServicesTests: XCTestCase {
         cliRuntimeMilliseconds: cli.elapsedMilliseconds, appPeakRSSBytes: appPeakRSSBytes,
         cliPeakRSSBytes: cliPeakRSSBytes))
   }
-  func testChunksPreferNearbyPunctuationWithoutExceedingThirtyWords() {
-    var words = (0..<85).map { "palabra\($0)" }
-    words[25] += ","
-    words[55] += "."
+  func testChunksKeepTheReportedParagraphOnCompleteSentenceBoundaries() {
+    let paragraph = """
+      My work’s objective is to critically engage with the structure of redistributive legal transformations in Latin America, taking as its first example Colombia. I would like to understand why it is that, given a range of social and gender neutral reforms since the early twentieth century, Colombia continues to be a country characterized by high levels of inequality in terms of resource distribution and access to jobs across gender lines. As seen in the tables below, if we compare rates of informal labor, poverty, and extreme poverty, women are above men in all categories.
+      """
 
-    let chunks = ModelServices.chunks(words.joined(separator: " "))
+    let chunks = ModelServices.chunks(paragraph)
 
-    XCTAssertEqual(chunks.count, 3)
-    XCTAssertTrue(chunks[0].hasSuffix(","))
-    XCTAssertTrue(chunks[1].hasSuffix("."))
-    XCTAssertTrue(chunks.allSatisfy { $0.split(separator: " ").count <= 30 })
+    XCTAssertEqual(chunks.count, 2)
+    XCTAssertTrue(chunks[0].hasSuffix("gender lines."))
+    XCTAssertTrue(chunks[1].hasPrefix("As seen in the tables below"))
+    XCTAssertTrue(chunks.allSatisfy { $0.unicodeScalars.count <= 510 })
   }
 
-  func testRepeatedEarlyPunctuationCannotOverflowTheLastChunk() {
+  func testChunkFallbackNeverExceedsKokorosUnicodeScalarLimit() {
     let words = (0..<2_300).map { index in
-      index % 22 == 21 ? "palabra\(index)." : "palabra\(index)"
+      "palabra\(index)"
     }
 
     let chunks = ModelServices.chunks(words.joined(separator: " "))
 
-    XCTAssertTrue(chunks.allSatisfy { $0.split(separator: " ").count <= 30 })
+    XCTAssertTrue(chunks.allSatisfy { $0.unicodeScalars.count <= 510 })
     XCTAssertEqual(chunks.flatMap { $0.split(separator: " ") }.count, words.count)
+  }
+
+  func testChunkingNeverCutsBetweenTheDigitsOfADecimal() {
+    let text =
+      String(repeating: "a", count: 495)
+      + " 59.1% continúa como una sola cifra " + String(repeating: "b", count: 100)
+
+    let chunks = ModelServices.chunks(text)
+
+    XCTAssertFalse(chunks[0].hasSuffix("59."))
+    XCTAssertTrue(chunks.allSatisfy { $0.unicodeScalars.count <= 510 })
   }
 
   func testManualRenderPauseResumeMeetsNFR4WithoutAudioOutput() throws {
@@ -1267,10 +1278,10 @@ final class ModelServicesTests: XCTestCase {
         units: [TTSUnitRequest(unitId: "unit", text: text)]),
       runtimeURL: runtime, modelURL: model, workRoot: work)
 
-    XCTAssertEqual(result.segments.count, 3)
-    XCTAssertEqual(result.segments.map(\.segmentIndex), [0, 1, 2])
-    XCTAssertEqual(result.segments.map(\.unitSampleOffset), [0, 2_400, 4_800])
-    XCTAssertEqual(result.segments.map(\.sampleCount), [2_400, 2_400, 2_400])
+    XCTAssertEqual(result.segments.count, 2)
+    XCTAssertEqual(result.segments.map(\.segmentIndex), [0, 1])
+    XCTAssertEqual(result.segments.map(\.unitSampleOffset), [0, 2_400])
+    XCTAssertEqual(result.segments.map(\.sampleCount), [2_400, 2_400])
     XCTAssertTrue(FileManager.default.fileExists(atPath: result.audioPath))
     XCTAssertEqual(
       try FileManager.default.contentsOfDirectory(atPath: work.path).sorted(), ["narration.wav"])
@@ -1338,6 +1349,52 @@ final class ModelServicesTests: XCTestCase {
       runtimeURL: runtime, modelURL: model, workRoot: work)
 
     XCTAssertTrue(try String(contentsOf: arguments, encoding: .utf8).contains("--raw-ipa"))
+  }
+
+  func testSharedPlanReinsertsPunctuationBeforeAutomaticKokoroSynthesis() throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("model-services-plan-\(UUID().uuidString)", isDirectory: true)
+    let model = root.appendingPathComponent("model", isDirectory: true)
+    let work = root.appendingPathComponent("work", isDirectory: true)
+    let source = root.appendingPathComponent("source.wav")
+    let arguments = root.appendingPathComponent("arguments.txt")
+    let runtime = root.appendingPathComponent("runtime")
+    let frontend = root.appendingPathComponent("espeak-ng")
+    try FileManager.default.createDirectory(at: model, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try writeTestWave(at: source)
+    try Data("#!/bin/sh\ncat\n".utf8).write(to: frontend)
+    try Data(
+      "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$ARGUMENTS_FILE\"\nwhile [ $# -gt 0 ]; do\n  if [ \"$1\" = \"--output\" ]; then cp \"$SOURCE_WAV\" \"$2\"; exit 0; fi\n  shift\ndone\nexit 2\n"
+        .utf8
+    ).write(to: runtime)
+    for executable in [runtime, frontend] {
+      try FileManager.default.setAttributes(
+        [.posixPermissions: 0o700], ofItemAtPath: executable.path)
+    }
+    setenv("SOURCE_WAV", source.path, 1)
+    setenv("ARGUMENTS_FILE", arguments.path, 1)
+    defer {
+      unsetenv("SOURCE_WAV")
+      unsetenv("ARGUMENTS_FILE")
+    }
+
+    let request = TTSSynthesisRequest(
+      modelId: "kokoro-82m-4bit",
+      modelRevision: "e4468a460f6f70b9125a003e0adb1ab7d4904bbd",
+      runtimeId: "mlx-audio-swift", runtimeVersion: "v0.1.3",
+      voiceId: "ef_dora", language: "es", rawIPA: false,
+      units: [TTSUnitRequest(unitId: "unit", text: "Texto, con pausa — y cierre.")])
+    let preparedRequest = EngineClient.phonemizedRequest(
+      request, engineURL: frontend, dataRoot: root)
+    _ = try ModelServices.synthesize(
+      preparedRequest, runtimeURL: runtime, modelURL: model, workRoot: work)
+
+    let forwarded = try String(contentsOf: arguments, encoding: .utf8)
+    XCTAssertTrue(forwarded.contains("--raw-ipa"))
+    XCTAssertTrue(forwarded.contains("Texto,"))
+    XCTAssertTrue(forwarded.contains("pausa—"))
+    XCTAssertTrue(forwarded.contains("cierre."))
   }
 
   private struct SpokenPlan: Decodable {

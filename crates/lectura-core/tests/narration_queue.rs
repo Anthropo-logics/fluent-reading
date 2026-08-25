@@ -14,6 +14,7 @@ fn unit(id: &str, content_class: ContentClass, index: u32) -> ReadingUnit {
             local_index: index,
         },
         text: id.into(),
+        spoken_text: id.into(),
         source_regions: vec![],
         source_block_ids: vec![],
         parent_unit_id: None,

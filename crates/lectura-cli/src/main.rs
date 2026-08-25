@@ -256,7 +256,7 @@ fn execute_gate_a(manifest: &GateAManifest, output: &Path) -> Result<GateAResult
             .flat_map(|page| page.units.iter())
             .take(unit_limit)
             .map(|unit| {
-                let plan = spoken_plan(&unit.text, &manifest.document.language)
+                let plan = spoken_plan(&unit.spoken_text, &manifest.document.language)
                     .map_err(|_| "LF_TTS_LANGUAGE_UNSUPPORTED".to_owned())?;
                 let text = phonemize_plan(&plan.parts, &plan.frontend_voice)?;
                 Ok(TtsUnit {
@@ -623,7 +623,8 @@ fn phonemize_plan(parts: &[SpokenPart], voice: &str) -> Result<String, String> {
         .replace(" ;", ";")
         .replace(" :", ":")
         .replace(" !", "!")
-        .replace(" ?", "?"))
+        .replace(" ?", "?")
+        .replace(" —", "—"))
 }
 
 fn gate_metric(

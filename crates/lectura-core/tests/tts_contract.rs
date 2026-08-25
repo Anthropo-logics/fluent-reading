@@ -128,9 +128,12 @@ fn tts_contract_is_closed_traceable_and_diagnostic_safe() {
             .iter()
             .any(|variant| { variant["properties"]["command"]["const"] == "tts_synthesize" })
     );
-    assert_eq!(
-        event["properties"]["result"]["oneOf"][1]["oneOf"][4]["$ref"],
-        "tts-synthesis.schema.json#/$defs/result"
+    assert!(
+        event["properties"]["result"]["oneOf"][1]["oneOf"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|variant| variant["$ref"] == "tts-synthesis.schema.json#/$defs/result")
     );
     assert_eq!(manifest["properties"]["artifacts"]["maxItems"], 32);
     assert!(

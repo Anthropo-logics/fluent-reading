@@ -598,38 +598,40 @@ public enum ModelServices {
   }
 
   static func chunks(_ text: String) -> [String] {
-    let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
-    // ponytail: 30 IPA words stays below Kokoro's observed 510-token ceiling;
-    // replace with processor token counts only if corpus evidence shows avoidable fragmentation.
-    let chunkCount = (words.count + 29) / 30
-    var chunks = [String]()
+    let normalized = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    let scalars = Array(normalized.unicodeScalars)
+    let limit = 510
+    let strong = CharacterSet(charactersIn: ".?!")
+    let medium = CharacterSet(charactersIn: ";:—")
+    let comma = CharacterSet(charactersIn: ",")
+    let whitespace = CharacterSet.whitespacesAndNewlines
+    let numericPunctuation = CharacterSet(charactersIn: ".,:")
+    let digits = CharacterSet.decimalDigits
+    var result = [String]()
     var start = 0
-    for remainingChunks in stride(from: chunkCount, through: 1, by: -1) {
-      let remainingWords = words.count - start
-      guard remainingChunks > 1 else {
-        chunks.append(words[start...].joined(separator: " "))
-        break
+    while start < scalars.count {
+      let ceiling = min(start + limit, scalars.count)
+      var end = ceiling
+      if ceiling < scalars.count {
+        let last = { (set: CharacterSet) in
+          (start..<ceiling).reversed().first(where: { index in
+            guard set.contains(scalars[index]) else { return false }
+            return !numericPunctuation.contains(scalars[index])
+              || index == 0 || index + 1 == scalars.count
+              || !digits.contains(scalars[index - 1]) || !digits.contains(scalars[index + 1])
+          }).map { $0 + 1 }
+        }
+        end = last(strong) ?? last(medium) ?? last(comma) ?? last(whitespace) ?? ceiling
       }
-      let ideal = min(30, (remainingWords + remainingChunks - 1) / remainingChunks)
-      let required = remainingWords - (remainingChunks - 1) * 30
-      let lower = max(required, ideal - 8)
-      let upper = min(30, ideal + 8)
-      let punctuation = CharacterSet(charactersIn: ",.;:!?")
-      let nearby = (lower...upper).min { left, right in
-        let leftEnds = words[start + left - 1].unicodeScalars.last.map(punctuation.contains) == true
-        let rightEnds =
-          words[start + right - 1].unicodeScalars.last.map(punctuation.contains) == true
-        if leftEnds != rightEnds { return leftEnds }
-        return abs(left - ideal) < abs(right - ideal)
+      let fragment = String(String.UnicodeScalarView(scalars[start..<end]))
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      if !fragment.isEmpty { result.append(fragment) }
+      start = end
+      while start < scalars.count, whitespace.contains(scalars[start]) {
+        start += 1
       }
-      let size =
-        nearby.map {
-          words[start + $0 - 1].unicodeScalars.last.map(punctuation.contains) == true ? $0 : ideal
-        } ?? ideal
-      chunks.append(words[start..<(start + size)].joined(separator: " "))
-      start += size
     }
-    return chunks
+    return result
   }
 
   private static func runRuntime(

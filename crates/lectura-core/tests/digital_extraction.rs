@@ -48,6 +48,7 @@ fn paragraph_and_sentence_units_have_stable_ids_and_round_trip_regions() {
             ExtractedBlock {
                 block_id: "block-b".into(),
                 text: "Segunda frase.".into(),
+                spoken_text: None,
                 region: SourceRegion {
                     rect_pdf_points: [30.0, 10.0, 180.0, 20.0],
                     ..region(10.0)
@@ -57,6 +58,7 @@ fn paragraph_and_sentence_units_have_stable_ids_and_round_trip_regions() {
             ExtractedBlock {
                 block_id: "block-a".into(),
                 text: "Primera frase. Otra oración.".into(),
+                spoken_text: None,
                 region: region(40.0),
                 confidence: 0.99,
             },
@@ -94,6 +96,7 @@ fn a_paragraph_survives_the_sentences_that_end_on_a_line_break() {
     let line = |id: &str, text: &str, y: f64, left: f64, width: f64| ExtractedBlock {
         block_id: id.into(),
         text: text.into(),
+        spoken_text: None,
         region: SourceRegion {
             rect_pdf_points: [left, y, width, 15.0],
             ..region(y)
@@ -166,6 +169,7 @@ fn an_indented_first_line_and_a_wider_gap_still_open_a_new_paragraph() {
     let line = |id: &str, text: &str, y: f64, left: f64, width: f64| ExtractedBlock {
         block_id: id.into(),
         text: text.into(),
+        spoken_text: None,
         region: SourceRegion {
             rect_pdf_points: [left, y, width, 15.0],
             ..region(y)
@@ -247,6 +251,7 @@ fn repeated_headers_and_footers_are_removed_with_explicit_trace() {
                 ExtractedBlock {
                     block_id: format!("header-{page_index}"),
                     text: "Título repetido".into(),
+                    spoken_text: None,
                     region: SourceRegion {
                         page_index,
                         ..region(90.0)
@@ -256,6 +261,7 @@ fn repeated_headers_and_footers_are_removed_with_explicit_trace() {
                 ExtractedBlock {
                     block_id: format!("body-{page_index}"),
                     text: format!("Contenido {page_index}."),
+                    spoken_text: None,
                     region: SourceRegion {
                         page_index,
                         ..region(50.0)
@@ -265,6 +271,7 @@ fn repeated_headers_and_footers_are_removed_with_explicit_trace() {
                 ExtractedBlock {
                     block_id: format!("footer-{page_index}"),
                     text: "Pie repetido".into(),
+                    spoken_text: None,
                     region: SourceRegion {
                         page_index,
                         ..region(10.0)
@@ -292,6 +299,7 @@ fn normalization_traces_hyphen_join_and_empty_pages_fail_locally() {
         blocks: vec![ExtractedBlock {
             block_id: "block-a".into(),
             text: "lectu-\nra fluida".into(),
+            spoken_text: None,
             region: region(10.0),
             confidence: 0.9,
         }],
@@ -327,6 +335,7 @@ fn normalization_traces_hyphen_join_and_empty_pages_fail_locally() {
             blocks: vec![ExtractedBlock {
                 block_id: "numeric".into(),
                 text: "10-\n20".into(),
+                spoken_text: None,
                 region: region(10.0),
                 confidence: 1.0,
             }],
@@ -381,12 +390,14 @@ fn complex_and_low_confidence_content_is_never_silent_prose() {
             ExtractedBlock {
                 block_id: "formula".into(),
                 text: "x = √y".into(),
+                spoken_text: None,
                 region: region(30.0),
                 confidence: 1.0,
             },
             ExtractedBlock {
                 block_id: "uncertain".into(),
                 text: "trazo incierto".into(),
+                spoken_text: None,
                 region: region(10.0),
                 confidence: 0.4,
             },
@@ -407,6 +418,7 @@ fn multicolumn_order_route_notes_and_unreliable_geometry_remain_explicit() {
     let block = |id: &str, text: &str, x: f64, y: f64| ExtractedBlock {
         block_id: id.into(),
         text: text.into(),
+        spoken_text: None,
         region: SourceRegion {
             rect_pdf_points: [x, y, 100.0, 20.0],
             ..region(y)
@@ -453,6 +465,7 @@ fn multicolumn_order_route_notes_and_unreliable_geometry_remain_explicit() {
                 ExtractedBlock {
                     block_id: "bad-geometry".into(),
                     text: "contenido preservado".into(),
+                    spoken_text: None,
                     region: SourceRegion {
                         rect_pdf_points: [10.0, 10.0, -1.0, 20.0],
                         ..region(10.0)
@@ -487,12 +500,14 @@ fn printed_page_folio_is_dropped_with_an_auditable_trace_but_years_in_prose_surv
             ExtractedBlock {
                 block_id: "b1".into(),
                 text: "Entre 1500 y 1800 la producción material progresa.".into(),
+                spoken_text: None,
                 region: region(400.0),
                 confidence: 0.95,
             },
             ExtractedBlock {
                 block_id: "b2".into(),
                 text: "8".into(),
+                spoken_text: None,
                 region: region(40.0),
                 confidence: 0.95,
             },
@@ -537,6 +552,7 @@ fn placed_block(id: &str, text: &str, region: SourceRegion) -> ExtractedBlock {
     ExtractedBlock {
         block_id: id.into(),
         text: text.into(),
+        spoken_text: None,
         region,
         confidence: 1.0,
     }
@@ -621,6 +637,124 @@ fn page_furniture_carrying_a_number_or_a_date_is_removed_across_the_whole_book()
     // The body of every page survives, including the page that had no running head.
     assert!(texts.iter().any(|text| text.contains("página 3.")));
     assert_eq!(normalized[3].units.len(), 1);
+}
+
+#[test]
+fn repeated_furniture_can_span_more_than_two_lines_per_margin() {
+    let pages: Vec<_> = (0..6_u32)
+        .map(|page_index| PageExtraction {
+            document_fingerprint: "sha256:three-line-header".into(),
+            generation_id: "generation-1".into(),
+            page_index,
+            blocks: vec![
+                placed_block(
+                    &format!("repository-{page_index}"),
+                    "Published by Digital Commons",
+                    placed(60.0, 740.0, 180.0, 10.0),
+                ),
+                placed_block(
+                    &format!("journal-{page_index}"),
+                    "JOURNAL OF GENDER, SOCIAL POLICY & THE LAW",
+                    placed(60.0, 720.0, 300.0, 10.0),
+                ),
+                placed_block(
+                    &format!("volume-{page_index}"),
+                    "Vol. 19:2",
+                    placed(60.0, 700.0, 70.0, 10.0),
+                ),
+                placed_block(
+                    &format!("body-a-{page_index}"),
+                    &format!(
+                        "El cuerpo de esta página {page_index} conserva íntegro su primer renglón,"
+                    ),
+                    placed(60.0, 620.0, 380.0, 12.0),
+                ),
+                placed_block(
+                    &format!("body-b-{page_index}"),
+                    &format!("y continúa con contenido distinto en el ejemplo {page_index}."),
+                    placed(60.0, 600.0, 380.0, 12.0),
+                ),
+                placed_block(
+                    &format!("body-c-{page_index}"),
+                    &format!(
+                        "La última línea del argumento {page_index} también permanece audible."
+                    ),
+                    placed(60.0, 580.0, 380.0, 12.0),
+                ),
+            ],
+        })
+        .collect();
+
+    let normalized = normalize_digital_document(&pages, "es", RequestedUnit::Paragraph);
+    let text = normalized
+        .iter()
+        .flat_map(|page| page.units.iter())
+        .map(|unit| unit.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    for furniture in ["Published by", "JOURNAL OF GENDER", "Vol. 19:2"] {
+        assert!(
+            !text.contains(furniture),
+            "las tres líneas del encabezado deben omitirse: {text}"
+        );
+    }
+    assert!(text.contains("cuerpo de esta página"));
+    assert!(text.contains("última línea del argumento"));
+}
+
+#[test]
+fn repeated_footer_above_a_detached_folio_is_still_furniture() {
+    let pages: Vec<_> = (0..6_u32)
+        .map(|page_index| PageExtraction {
+            document_fingerprint: "sha256:detached-footer".into(),
+            generation_id: "generation-1".into(),
+            page_index,
+            blocks: vec![
+                placed_block(
+                    &format!("body-a-{page_index}"),
+                    &format!("El argumento propio de la página {page_index} permanece visible."),
+                    placed(60.0, 620.0, 380.0, 12.0),
+                ),
+                placed_block(
+                    &format!("body-b-{page_index}"),
+                    &format!("La explicación distinta {page_index} también debe conservarse."),
+                    placed(60.0, 600.0, 380.0, 12.0),
+                ),
+                placed_block(
+                    &format!("body-c-{page_index}"),
+                    &format!("El cierre irrepetible de esta página lleva el número {page_index}."),
+                    placed(60.0, 580.0, 380.0, 12.0),
+                ),
+                placed_block(
+                    &format!("imprint-{page_index}"),
+                    "Published by Digital Commons @ American University Washington College of Law, 2011",
+                    placed(60.0, 64.0, 365.0, 10.0),
+                ),
+                placed_block(
+                    &format!("folio-{page_index}"),
+                    &(page_index + 500).to_string(),
+                    placed(270.0, 5.0, 20.0, 10.0),
+                ),
+                placed_block(
+                    &format!("stamp-{page_index}"),
+                    &format!("Vol. 19, page {}", page_index + 500),
+                    placed(60.0, 3.0, 90.0, 10.0),
+                ),
+            ],
+        })
+        .collect();
+
+    let normalized = normalize_digital_document(&pages, "en", RequestedUnit::Paragraph);
+    let text = normalized
+        .iter()
+        .flat_map(|page| page.units.iter())
+        .map(|unit| unit.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    assert!(!text.contains("Published by Digital Commons"), "{text}");
+    assert!(text.contains("argumento propio"));
 }
 
 #[test]
@@ -713,6 +847,145 @@ fn a_numbered_footnote_is_kept_on_the_page_but_left_out_of_the_narration() {
 }
 
 #[test]
+fn a_dense_footnote_apparatus_can_rise_above_the_bottom_quarter() {
+    let page = PageExtraction {
+        document_fingerprint: "sha256:dense-notes".into(),
+        generation_id: "generation-1".into(),
+        page_index: 2,
+        blocks: vec![
+            placed_block(
+                "body-a",
+                "El argumento1 ocupa el cuerpo de la página y conserva el año 2011.",
+                placed(75.0, 700.0, 380.0, 12.0),
+            ),
+            placed_block(
+                "body-b",
+                "La explicación continúa con fuentes2, ejemplos3 y una conclusión.4",
+                placed(75.0, 680.0, 380.0, 12.0),
+            ),
+            placed_block(
+                "note-1",
+                "1. Primera referencia bibliográfica suficientemente extensa para ser una nota.",
+                placed(75.0, 300.0, 380.0, 9.0),
+            ),
+            placed_block(
+                "note-2",
+                "2. Segunda referencia bibliográfica suficientemente extensa para ser una nota.",
+                placed(75.0, 230.0, 380.0, 9.0),
+            ),
+            placed_block(
+                "note-3",
+                "3. Tercera referencia bibliográfica suficientemente extensa para ser una nota.",
+                placed(75.0, 160.0, 380.0, 9.0),
+            ),
+            placed_block(
+                "note-4",
+                "4. Cuarta referencia bibliográfica suficientemente extensa para ser una nota.",
+                placed(75.0, 90.0, 380.0, 9.0),
+            ),
+        ],
+    };
+
+    let normalized = normalize_digital_page(&page, "es", RequestedUnit::Paragraph);
+    let notes: Vec<_> = normalized
+        .units
+        .iter()
+        .filter(|unit| {
+            unit.text
+                .starts_with(|character: char| character.is_ascii_digit())
+        })
+        .collect();
+
+    assert_eq!(notes.len(), 4);
+    assert!(
+        notes
+            .iter()
+            .all(|unit| unit.content_class == ContentClass::Note),
+        "todo el aparato continuo debe quedar fuera de narración: {:?}",
+        notes
+            .iter()
+            .map(|unit| (&unit.text, unit.content_class))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn table_of_contents_leaders_do_not_turn_numbered_titles_into_formulas() {
+    let page = PageExtraction {
+        document_fingerprint: "sha256:contents".into(),
+        generation_id: "generation-1".into(),
+        page_index: 1,
+        blocks: vec![
+            placed_block(
+                "toc-1",
+                "1. Foundational Moment..........................................................582",
+                placed(75.0, 700.0, 380.0, 12.0),
+            ),
+            placed_block(
+                "toc-2",
+                "2. Golden Age..................................................................582",
+                placed(75.0, 670.0, 380.0, 12.0),
+            ),
+            placed_block(
+                "toc-3",
+                "3. Decadence through Flexibilisation..........................................583",
+                placed(75.0, 640.0, 380.0, 12.0),
+            ),
+        ],
+    };
+
+    let normalized = normalize_digital_page(&page, "en", RequestedUnit::Paragraph);
+    assert_eq!(normalized.units.len(), 3);
+    assert!(
+        normalized
+            .units
+            .iter()
+            .all(|unit| unit.content_class == ContentClass::Prose),
+        "los puntos guía son estructura de índice, no notación matemática: {:?}",
+        normalized
+            .units
+            .iter()
+            .map(|unit| (&unit.text, unit.content_class))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        normalized
+            .units
+            .iter()
+            .map(|unit| unit.spoken_text.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "1. Foundational Moment",
+            "2. Golden Age",
+            "3. Decadence through Flexibilisation",
+        ],
+        "la voz omite el líder y el folio, pero la línea visible queda íntegra"
+    );
+}
+
+#[test]
+fn multiple_contents_entries_in_one_pdf_block_keep_every_title() {
+    let page = PageExtraction {
+        document_fingerprint: "sha256:packed-contents".into(),
+        generation_id: "generation-1".into(),
+        page_index: 1,
+        blocks: vec![placed_block(
+            "toc",
+            "1. Maternity Protection........................589 2. Equality and Exclusion.........590 3. Poverty Alleviation.............592 B. An Alternative Feminist Account",
+            placed(75.0, 700.0, 380.0, 12.0),
+        )],
+    };
+
+    let normalized = normalize_digital_page(&page, "en", RequestedUnit::Paragraph);
+    assert_eq!(normalized.units[0].content_class, ContentClass::Prose);
+    assert_eq!(
+        normalized.units[0].spoken_text,
+        "1. Maternity Protection 2. Equality and Exclusion 3. Poverty Alleviation B. An Alternative Feminist Account"
+    );
+    assert!(normalized.units[0].text.contains("589"));
+}
+
+#[test]
 fn a_numbered_line_in_the_body_of_the_page_stays_prose() {
     let page = PageExtraction {
         document_fingerprint: "sha256:fixture".into(),
@@ -750,6 +1023,37 @@ fn a_numbered_line_in_the_body_of_the_page_stays_prose() {
     );
 }
 
+#[test]
+fn sentence_units_keep_their_own_spoken_projection() {
+    let page = PageExtraction {
+        document_fingerprint: "sha256:sentence-projection".into(),
+        generation_id: "generation-1".into(),
+        page_index: 0,
+        blocks: vec![ExtractedBlock {
+            block_id: "body".into(),
+            text: "La fuente1 confirmó el dato. El informe2 conservó el año 2011.".into(),
+            spoken_text: Some(
+                "La fuente confirmó el dato. El informe conservó el año 2011.".into(),
+            ),
+            region: placed(75.0, 600.0, 380.0, 12.0),
+            confidence: 1.0,
+        }],
+    };
+
+    let normalized = normalize_digital_page(&page, "es", RequestedUnit::Sentence);
+    assert_eq!(
+        normalized
+            .units
+            .iter()
+            .map(|unit| unit.spoken_text.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "La fuente confirmó el dato.",
+            "El informe conservó el año 2011."
+        ]
+    );
+}
+
 /// The reading order of a page the PDF itself tags `/Rotate 90`.
 ///
 /// The geometry below is the real one: the first nine lines of page 5 of `Goldberg2002`, straight
@@ -764,6 +1068,7 @@ fn a_page_tagged_ninety_degrees_is_read_along_its_own_axis() {
     let turned = |id: &str, text: &str, x: f64, y: f64, width: f64, height: f64| ExtractedBlock {
         block_id: id.into(),
         text: text.into(),
+        spoken_text: None,
         region: SourceRegion {
             page_index: 5,
             rect_pdf_points: [x, y, width, height],
@@ -853,6 +1158,7 @@ fn a_page_tagged_two_hundred_and_seventy_degrees_reverses_both_axes() {
     let turned = |id: &str, text: &str, x: f64, y: f64| ExtractedBlock {
         block_id: id.into(),
         text: text.into(),
+        spoken_text: None,
         region: SourceRegion {
             page_index: 0,
             rect_pdf_points: [x, y, 20.0, 300.0],
@@ -888,6 +1194,7 @@ fn a_rotation_that_is_not_a_quarter_turn_changes_nothing() {
     let skewed = |id: &str, text: &str, y: f64| ExtractedBlock {
         block_id: id.into(),
         text: text.into(),
+        spoken_text: None,
         region: SourceRegion {
             page_index: 0,
             rect_pdf_points: [10.0, y, 200.0, 20.0],
@@ -922,6 +1229,7 @@ fn a_negative_rotation_means_the_same_quarter_turn() {
     let turned = |id: &str, text: &str, x: f64, degrees: i16| ExtractedBlock {
         block_id: id.into(),
         text: text.into(),
+        spoken_text: None,
         region: SourceRegion {
             page_index: 0,
             rect_pdf_points: [x, 100.0, 20.0, 300.0],

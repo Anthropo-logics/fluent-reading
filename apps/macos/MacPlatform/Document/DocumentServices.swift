@@ -176,7 +176,7 @@ public enum DocumentLanguage {
 
   /// `count` indices spread from 0 across `total`, used for both the pages read and the windows
   /// kept. Returns everything when there is not enough to choose from.
-  nonisolated static func spreadIndices(over total: Int, count: Int) -> [Int] {
+  public nonisolated static func spreadIndices(over total: Int, count: Int) -> [Int] {
     guard count > 0 else { return [] }
     guard total > count else { return Array(0..<max(total, 0)) }
     return (0..<count).map { $0 * total / count }
@@ -190,9 +190,12 @@ public enum DocumentLanguage {
   /// contents, and those are the pages least like the book. Reading the head was what let
   /// `Goldberg2002` — 169 pages of English — be decided by its title page (Story 6.16).
   public nonisolated static func sampleText(from document: PDFDocument) -> String {
-    spreadIndices(over: document.pageCount, count: sampledPages)
-      .compactMap { document.page(at: $0)?.string }
-      .joined(separator: "\n")
+    var pages = [String]()
+    for pageIndex in spreadIndices(over: document.pageCount, count: sampledPages) {
+      guard !Task.isCancelled else { break }
+      if let text = document.page(at: pageIndex)?.string { pages.append(text) }
+    }
+    return pages.joined(separator: "\n")
   }
 
   /// The same question asked off the main thread. The vote is dozens of recogniser calls — some 58
@@ -206,9 +209,14 @@ public enum DocumentLanguage {
   /// does, so opening stays responsive.
   public static func identifyAsync(in document: PDFDocument) async -> Identification? {
     let sendable = SendablePDFDocument(value: document)
-    return await Task.detached(priority: .userInitiated) {
+    let identification = Task.detached(priority: .userInitiated) {
       identify(in: sampleText(from: sendable.value))
-    }.value
+    }
+    return await withTaskCancellationHandler {
+      await identification.value
+    } onCancel: {
+      identification.cancel()
+    }
   }
 
   /// Which voice language to preselect (AC4). The document's own language wins when a voice for it
@@ -511,12 +519,26 @@ public struct DigitalSourceRegion: Codable, Equatable, Sendable {
 public struct DigitalTextBlock: Codable, Equatable, Sendable {
   public let blockID: String
   public let text: String
+  public let spokenText: String?
   public let region: DigitalSourceRegion
   public let confidence: Double
 
+  public init(
+    blockID: String, text: String, spokenText: String? = nil, region: DigitalSourceRegion,
+    confidence: Double
+  ) {
+    self.blockID = blockID
+    self.text = text
+    self.spokenText = spokenText
+    self.region = region
+    self.confidence = confidence
+  }
+
   enum CodingKeys: String, CodingKey {
     case blockID = "block_id"
-    case text, region, confidence
+    case text
+    case spokenText = "spoken_text"
+    case region, confidence
   }
 }
 
@@ -616,9 +638,14 @@ public enum DocumentServices {
     -> [DocumentOutlineEntry]
   {
     let sendable = SendablePDFDocument(value: document)
-    return await Task.detached(priority: .utility) {
+    let prescan = Task.detached(priority: .utility) {
       prescanHeadings(from: sendable.value)
-    }.value
+    }
+    return await withTaskCancellationHandler {
+      await prescan.value
+    } onCancel: {
+      prescan.cancel()
+    }
   }
 
   public nonisolated static func prescanHeadings(from document: PDFDocument)
@@ -632,6 +659,7 @@ public enum DocumentServices {
 
     var lines: [Line] = []
     for pageIndex in 0..<document.pageCount {
+      guard !Task.isCancelled else { return [] }
       guard let page = document.page(at: pageIndex), let attributed = page.attributedString else {
         continue
       }
@@ -764,14 +792,38 @@ public enum DocumentServices {
     at url: URL, pageIndex: Int, rotation: Int? = nil
   ) async -> DigitalPageResult {
     await Task.detached(priority: .utility) {
-      guard url.isFileURL, let document = PDFDocument(url: url), !document.isLocked else {
-        return DigitalPageResult(
-          pageIndex: UInt32(pageIndex), status: "failed", blocks: [],
-          errorCode: "LF_PDF_UNREADABLE")
+      autoreleasepool {
+        guard url.isFileURL, let document = PDFDocument(url: url), !document.isLocked else {
+          return DigitalPageResult(
+            pageIndex: UInt32(pageIndex), status: "failed", blocks: [],
+            errorCode: "LF_PDF_UNREADABLE")
+        }
+        apply(rotation, to: document.page(at: pageIndex))
+        return extractDigitalPage(from: document, pageIndex: pageIndex)
       }
-      apply(rotation, to: document.page(at: pageIndex))
-      return extractDigitalPage(from: document, pageIndex: pageIndex)
     }.value
+  }
+
+  public static func extractDigitalPages(
+    at url: URL, pageIndexes: [Int]
+  ) async -> [DigitalPageResult] {
+    let extraction = Task.detached(priority: .utility) { () -> [DigitalPageResult] in
+      guard url.isFileURL, let document = PDFDocument(url: url), !document.isLocked else {
+        return []
+      }
+      var pages = [DigitalPageResult]()
+      for pageIndex in pageIndexes.sorted() {
+        guard !Task.isCancelled else { break }
+        pages.append(
+          autoreleasepool { extractDigitalPage(from: document, pageIndex: pageIndex) })
+      }
+      return pages
+    }
+    return await withTaskCancellationHandler {
+      await extraction.value
+    } onCancel: {
+      extraction.cancel()
+    }
   }
 
   public static func extractOCRPage(
@@ -826,17 +878,44 @@ public enum DocumentServices {
       characterCount > 0
       ? page.selection(for: NSRange(location: 0, length: characterCount))?.selectionsByLine() ?? []
       : []
-    let blocks = lines.enumerated().compactMap { lineIndex, selection -> DigitalTextBlock? in
+    struct Line {
+      let selection: PDFSelection
+      let text: String
+      let range: NSRange?
+      let bounds: CGRect
+    }
+    let extractedLines = lines.compactMap { selection -> Line? in
       guard let text = selection.string?.trimmingCharacters(in: .whitespacesAndNewlines),
         !text.isEmpty
       else { return nil }
-      let bounds = selection.bounds(for: page)
+      let range =
+        selection.numberOfTextRanges(on: page) == 1 ? selection.range(at: 0, on: page) : nil
+      return Line(
+        selection: selection, text: text, range: range, bounds: selection.bounds(for: page))
+    }
+    let heights = extractedLines.map(\.bounds.height).filter { $0 > 0 }.sorted()
+    let bodyHeight =
+      heights.isEmpty ? 0 : heights[Int((Double(heights.count - 1) * 0.75).rounded())]
+    let crop = page.bounds(for: .cropBox)
+    let upright = abs(page.rotation) % 180 == 0
+    let noteNumbers = Set(
+      extractedLines.compactMap { line -> String? in
+        guard upright, line.bounds.midY <= crop.minY + crop.height * 0.48,
+          line.bounds.height <= bodyHeight * 0.92
+        else { return nil }
+        return openingNoteNumeral(line.text)
+      })
+    let blocks = extractedLines.enumerated().map { lineIndex, line in
       return DigitalTextBlock(
         blockID: "page-\(pageIndex)-block-\(lineIndex)",
-        text: text,
+        text: line.text,
+        spokenText: spokenText(
+          for: line.selection, range: line.range, on: page, notes: noteNumbers),
         region: DigitalSourceRegion(
           pageIndex: UInt32(pageIndex),
-          rectPDFPoints: [bounds.minX, bounds.minY, bounds.width, bounds.height],
+          rectPDFPoints: [
+            line.bounds.minX, line.bounds.minY, line.bounds.width, line.bounds.height,
+          ],
           pageRotationDegrees: page.rotation,
           sourceToPageTransform: [1, 0, 0, 1, 0, 0],
           confidence: 1
@@ -849,6 +928,76 @@ public enum DocumentServices {
       status: blocks.isEmpty ? "failed" : "completed",
       blocks: blocks,
       errorCode: blocks.isEmpty ? "LF_PDF_PAGE_NO_TEXT" : nil)
+  }
+
+  nonisolated private static func openingNoteNumeral(_ text: String) -> String? {
+    let characters = Array(text)
+    let count = characters.prefix(while: { $0.isASCII && $0.isNumber }).count
+    guard (1...3).contains(count), characters.count > count else { return nil }
+    let separator = characters[count]
+    guard [".", ")", "]"].contains(separator) else { return nil }
+    guard characters.count == count + 1 || characters[count + 1].isWhitespace else { return nil }
+    return String(characters[..<count])
+  }
+
+  /// Removes only a small, raised numeral that is paired with a note printed on the same page.
+  /// The source line is untouched; this projection is used only by narration.
+  nonisolated private static func spokenText(
+    for selection: PDFSelection, range: NSRange?, on page: PDFPage, notes: Set<String>
+  ) -> String? {
+    guard !notes.isEmpty, let range, range.location != NSNotFound,
+      let source = selection.string
+    else { return nil }
+    let string = source as NSString
+    var removals: [NSRange] = []
+    var index = 0
+    while index < string.length {
+      guard CharacterSet.decimalDigits.contains(UnicodeScalar(string.character(at: index))!) else {
+        index += 1
+        continue
+      }
+      var end = index + 1
+      while end < string.length,
+        CharacterSet.decimalDigits.contains(UnicodeScalar(string.character(at: end))!)
+      {
+        end += 1
+      }
+      let numeral = string.substring(with: NSRange(location: index, length: end - index))
+      defer { index = end }
+      guard notes.contains(numeral), index > 0 else { continue }
+      let before = Character(string.substring(with: NSRange(location: index - 1, length: 1)))
+      let attached =
+        before.isLetter || before == ")" || before == "]"
+        || (before == "." && index > 1
+          && !Character(string.substring(with: NSRange(location: index - 2, length: 1))).isNumber)
+      let followedByBody =
+        end < string.length
+        && Character(string.substring(with: NSRange(location: end, length: 1))).isLetter
+      guard attached, !followedByBody else { continue }
+
+      let absolute = NSRange(location: range.location + index, length: end - index)
+      let preceding = NSRange(location: range.location + index - 1, length: 1)
+      guard let digit = page.selection(for: absolute), let base = page.selection(for: preceding)
+      else { continue }
+      let attributed = selection.attributedString
+      let digitSize = (attributed?.attribute(.font, at: index, effectiveRange: nil) as? NSFont)?
+        .pointSize
+      let baseSize = (attributed?.attribute(.font, at: index - 1, effectiveRange: nil) as? NSFont)?
+        .pointSize
+      let smallerType = digitSize != nil && baseSize != nil && digitSize! <= baseSize! * 0.85
+      let digitBounds = digit.bounds(for: page)
+      let baseBounds = base.bounds(for: page)
+      let raised =
+        smallerType || digitBounds.height <= baseBounds.height * 0.85
+        || digitBounds.midY >= baseBounds.midY + baseBounds.height * 0.18
+      if raised { removals.append(NSRange(location: index, length: end - index)) }
+    }
+    guard !removals.isEmpty else { return nil }
+    let projected = NSMutableString(string: source)
+    for removal in removals.reversed() { projected.deleteCharacters(in: removal) }
+    let result = (projected as String).trimmingCharacters(in: .whitespacesAndNewlines)
+    let visible = source.trimmingCharacters(in: .whitespacesAndNewlines)
+    return result == visible ? nil : result
   }
 
   nonisolated public static func extractOCRPages(

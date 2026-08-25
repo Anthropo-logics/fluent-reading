@@ -150,6 +150,7 @@ final class ReaderViewModel {
   /// page reaches the engine, so no page is ever normalised under a language that later changes.
   @ObservationIgnored
   private var languageIdentification: Task<DocumentLanguage.Identification?, Never>?
+  @ObservationIgnored private var outlinePrescanTask: Task<Void, Never>?
   /// A scan has no text layer to identify from, so the first recognised pages stand in for it. The
   /// count runs down, which is what stops a book with a long quotation in another language from
   /// re-deciding its language as the reader moves through it (AC5).
@@ -259,12 +260,9 @@ final class ReaderViewModel {
       .first(where: { $0.unitID == currentUnitID })?.sourceRegions.first
   }
 
-  /// What an exported audiobook is made of. Wider than `isNarrable`: a recording is a complete
-  /// rendition of the book, so it keeps the footnotes that live narration steps over. Chapter
-  /// titles belong here for the same reason they belong in the narration — and once a title arrives
-  /// as a single `heading` unit, leaving the class out drops the whole title from the recording
-  /// instead of only its first line.
-  static let exportableContentClasses: Set<String> = ["prose", "note", "heading"]
+  /// Automatic audio follows the same policy on screen and in an exported audiobook. Notes remain
+  /// visible and traceable, but neither route inserts them into the argument being read.
+  static let exportableContentClasses: Set<String> = ["prose", "heading"]
 
   private var exportReadyUnitsWithPages: [(unit: LFReadingUnit, pageIndex: Int)] {
     normalizedPages.keys.sorted().flatMap { key in
@@ -299,7 +297,10 @@ final class ReaderViewModel {
   }
 
   var exportEstimatedDurationSeconds: Double {
-    Double(exportReadyUnits.reduce(0) { $0 + $1.text.split(whereSeparator: \.isWhitespace).count })
+    Double(
+      exportReadyUnits.reduce(0) {
+        $0 + $1.narrationText.split(whereSeparator: \.isWhitespace).count
+      })
       / 180 * 60
   }
 
@@ -620,7 +621,7 @@ final class ReaderViewModel {
   /// Reads the whole text layer off the main thread so opening stays responsive. Only applied while
   /// the same document is still open — a fast reopen must not adopt the previous document's index.
   private func startOutlinePrescan(for document: PDFDocument) {
-    Task { [weak self] in
+    outlinePrescanTask = Task { [weak self] in
       let headings = await DocumentServices.prescanHeadingsAsync(from: document)
       guard let self, self.document === document else { return }
       self.prescannedOutline = headings
@@ -754,7 +755,7 @@ final class ReaderViewModel {
         contentClass: unit.contentClass, confidence: unit.confidence)
       {
         translationStatuses[unit.unitID] = .pending
-        pendingUnits.append(TranslationUnitRequest(unitId: unit.unitID, text: unit.text))
+        pendingUnits.append(TranslationUnitRequest(unitId: unit.unitID, text: unit.narrationText))
       } else {
         translationStatuses[unit.unitID] = .nonTranslatable
       }
@@ -1055,7 +1056,7 @@ final class ReaderViewModel {
       return
     }
     translationStatuses[unit.unitID] = .pending
-    let requestUnit = TranslationUnitRequest(unitId: unit.unitID, text: unit.text)
+    let requestUnit = TranslationUnitRequest(unitId: unit.unitID, text: unit.narrationText)
     let workRoot = temporaryWorkRoot.appendingPathComponent(
       "temporary-translation/\(UUID().uuidString)", isDirectory: true)
     let modelURL = installed.directory.appendingPathComponent("data", isDirectory: true)
@@ -1175,31 +1176,28 @@ final class ReaderViewModel {
         return
       }
     } else {
-      text = unit.text
+      text = unit.narrationText
       voiceID = selectedVoiceID
       language = selectedVoiceLanguage
     }
 
-    // Narrate through the phoneme path the harness validated. Without it Kokoro drops numerals and
-    // acronyms outright ("art. 270" became "art."). If the engine is missing the raw text is still
-    // spoken, so a packaging problem degrades pronunciation instead of silencing the reader.
-    let phonemes = phoneticFrontendURL.flatMap {
-      ModelServices.phonemize(
-        text, language: language, engineURL: $0, dataRoot: phoneticDataRootURL)
-    }
     let request = TTSSynthesisRequest(
       modelId: manifest.id, modelRevision: manifest.modelRevision,
       runtimeId: manifest.runtimeId, runtimeVersion: manifest.runtimeVersion,
-      voiceId: voiceID, language: language, rawIPA: phonemes != nil,
-      units: [TTSUnitRequest(unitId: unit.unitID, text: phonemes ?? text)])
+      voiceId: voiceID, language: language, rawIPA: false,
+      units: [TTSUnitRequest(unitId: unit.unitID, text: text)])
     let workRoot = temporaryWorkRoot.appendingPathComponent(
       "temporary-audio/\(UUID().uuidString)", isDirectory: true)
+    let frontendURL = phoneticFrontendURL
+    let dataRootURL = phoneticDataRootURL
     let generation = narrationGeneration
     narrationTask = Task {
       do {
         let result = try await Task.detached(priority: .userInitiated) {
-          try ModelServices.synthesize(
-            request, runtimeURL: runtimeURL, modelURL: modelURL, workRoot: workRoot)
+          let preparedRequest = EngineClient.phonemizedRequest(
+            request, engineURL: frontendURL, dataRoot: dataRootURL)
+          return try ModelServices.synthesize(
+            preparedRequest, runtimeURL: runtimeURL, modelURL: modelURL, workRoot: workRoot)
         }.value
         guard !Task.isCancelled, generation == narrationGeneration else { return }
         let audioURL = URL(fileURLWithPath: result.audioPath)
@@ -1480,11 +1478,13 @@ final class ReaderViewModel {
     }
     let sourceLanguage = selectedVoiceLanguage
     let workRoot = temporaryWorkRoot
+    let exportPhoneticFrontendURL = phoneticFrontendURL
+    let exportPhoneticDataRootURL = phoneticDataRootURL
     exportTask = Task {
       if exportPendingPages > 0 { await prepareDocumentForExport() }
       guard !Task.isCancelled else { return }
       let units = exportReadyUnits.map {
-        AudiobookExportUnit(unitID: $0.unitID, text: $0.text, anchorID: $0.unitID)
+        AudiobookExportUnit(unitID: $0.unitID, text: $0.narrationText, anchorID: $0.unitID)
       }
       let chapters = exportChapters
       exportTotalUnits = units.count
@@ -1523,6 +1523,13 @@ final class ReaderViewModel {
             runtimeURL: exportRuntimeURL, destinationURL: destination, workRoot: root,
             replaceExisting: exportReplaceExisting, chapters: chapters),
           shouldPause: { await MainActor.run { self.exportPauseRequested } },
+          synthesize: { request, runtimeURL, modelURL, workRoot in
+            let preparedRequest = EngineClient.phonemizedRequest(
+              request, engineURL: exportPhoneticFrontendURL,
+              dataRoot: exportPhoneticDataRootURL)
+            return try ModelServices.synthesize(
+              preparedRequest, runtimeURL: runtimeURL, modelURL: modelURL, workRoot: workRoot)
+          },
           translate: translateUnit,
           progress: { progress in
             self.exportCompletedUnits = progress.completedUnits
@@ -1593,6 +1600,9 @@ final class ReaderViewModel {
 
   private func open(_ selected: ReadAccessGrant) {
     let openedAt = ContinuousClock.now
+    reportingTask?.cancel()
+    outlinePrescanTask?.cancel()
+    languageIdentification?.cancel()
     // Story 6.20: reading aloud belongs to the document being left, so it ends here — before the
     // new one is even read from disk, not somewhere inside the load. Everything else this function
     // clears is document state; narration is the one piece of it that keeps making noise on its
@@ -1720,12 +1730,19 @@ final class ReaderViewModel {
         Self.metrics.error("LF_FILE_FINGERPRINT_FAILED")
         return
       }
-      guard
+      // Four spread page pairs provide four observations of each recto/verso pattern. The core
+      // requires three, so one exceptional chapter page may be absent without reading all margins.
+      let furniturePageIndexes = DocumentLanguage.spreadIndices(
+        over: (pageCount + 1) / 2, count: 4
+      ).flatMap { [$0 * 2, $0 * 2 + 1] }.filter { $0 < pageCount }
+      let furniturePages = await grant.extractDigitalPages(furniturePageIndexes)
+      guard !Task.isCancelled,
         let event = try? await EngineClient.openDocument(
           accessGrantID: grant.id,
           documentFingerprint: fingerprint,
           pageCount: UInt32(pageCount),
-          firstPageMilliseconds: milliseconds
+          firstPageMilliseconds: milliseconds,
+          furniturePages: furniturePages
         ), let opened = event.result?.documentOpened
       else { return }
       await plan(documentID: opened.documentID)

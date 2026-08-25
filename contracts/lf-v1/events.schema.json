@@ -54,6 +54,28 @@
             },
             {
               "type": "object",
+              "required": ["language", "frontend_voice", "normalized_text", "parts"],
+              "properties": {
+                "language": { "enum": ["es", "en", "pt"] },
+                "frontend_voice": { "enum": ["es", "en-us", "pt-br"] },
+                "normalized_text": { "type": "string" },
+                "parts": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["kind", "value"],
+                    "properties": {
+                      "kind": { "enum": ["text", "punctuation"] },
+                      "value": { "type": "string", "minLength": 1 }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
               "required": ["corpus_id", "complete", "document_count", "matrix_document_count", "page_count", "checked_hashes"],
               "properties": {
                 "corpus_id": { "type": "string" },

@@ -25,6 +25,10 @@ public final class ReadAccessGrant {
     await DocumentServices.extractDigitalPage(at: url, pageIndex: pageIndex, rotation: rotation)
   }
 
+  public func extractDigitalPages(_ pageIndexes: [Int]) async -> [DigitalPageResult] {
+    await DocumentServices.extractDigitalPages(at: url, pageIndexes: pageIndexes)
+  }
+
   public func extractOCRPage(
     _ pageIndex: Int, language: String, rotation: Int? = nil
   ) async -> DigitalPageResult {

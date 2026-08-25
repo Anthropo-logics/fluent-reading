@@ -7,6 +7,24 @@ La versión que muestra el panel «Acerca de» sale de `MARKETING_VERSION` y
 `CURRENT_PROJECT_VERSION` del proyecto de Xcode. Al preparar una versión hay que subir ambos y
 añadir aquí su sección.
 
+## [0.3.0] — 2026-08-25 (build 3)
+
+### Añadido
+
+- Proyección hablada separada del texto visible: conserva el documento y sus anclas mientras omite
+  de la narración llamadas de nota emparejadas, notas al pie y mobiliario editorial repetido.
+- Un único plan de habla para lectura y exportación, con puntuación prosódica y cortes por oración o
+  cláusula dentro del límite real de Kokoro.
+
+### Corregido
+
+- Las notas densas, cabeceras, pies, folios y créditos editoriales ya no interrumpen la lectura
+  automática; los años, cifras y numerales relevantes del cuerpo permanecen audibles.
+- Las entradas numeradas de tablas de contenido conservan sus títulos y orden; los puntos guía y el
+  folio final no se narran.
+- El gate de macOS serializa tests de modelo y UI para evitar que Xcode mate el runner por presión de
+  recursos.
+
 ## [0.2.0] — 2026-08-24 (build 2)
 
 ### Añadido

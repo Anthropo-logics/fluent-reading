@@ -39,6 +39,14 @@ final class LFContractTests: XCTestCase {
     XCTAssertEqual(event.result?.canary?.message, "lectura-core ready")
   }
 
+  func testEngineClientConsumesTheSharedSpokenPlan() throws {
+    let plan = try EngineClient.spokenPlan(
+      text: "Una frase, con pausa — y cierre.", language: "es")
+
+    XCTAssertEqual(plan.frontendVoice, "es")
+    XCTAssertTrue(plan.parts.contains(LFSpokenPart(kind: "punctuation", value: "—")))
+  }
+
   func testDocumentOpenedResultDecodesWithoutAPath() throws {
     let event = try JSONDecoder().decode(
       LFEvent.self,
@@ -66,6 +74,39 @@ final class LFContractTests: XCTestCase {
     XCTAssertEqual(event.result?.documentOpened?.accessGrantID, "grant_opaque")
     XCTAssertEqual(event.result?.documentOpened?.pageCount, 2)
     XCTAssertEqual(event.result?.documentOpened?.firstPageMilliseconds, 125)
+  }
+
+  func testOpenDocumentPrimesFurnitureBeforeNormalizingItsFirstPage() async throws {
+    let fingerprint = String(repeating: "c", count: 64)
+    let pages = (0..<3).map { index in
+      DigitalPageResult(
+        pageIndex: UInt32(index), status: "completed",
+        blocks: [
+          DigitalTextBlock(
+            blockID: "body-\(index)", text: "Contenido legible y distinto de la página \(index).",
+            region: DigitalSourceRegion(
+              pageIndex: UInt32(index), rectPDFPoints: [60, 600, 380, 12],
+              pageRotationDegrees: 0, sourceToPageTransform: [1, 0, 0, 1, 0, 0], confidence: 1),
+            confidence: 1),
+          DigitalTextBlock(
+            blockID: "footer-\(index)", text: "Published by Digital Commons, 2011",
+            region: DigitalSourceRegion(
+              pageIndex: UInt32(index), rectPDFPoints: [60, 5, 220, 10],
+              pageRotationDegrees: 0, sourceToPageTransform: [1, 0, 0, 1, 0, 0], confidence: 1),
+            confidence: 1),
+        ], errorCode: nil)
+    }
+
+    _ = try await EngineClient.openDocument(
+      accessGrantID: "grant_furniture", documentFingerprint: fingerprint, pageCount: 3,
+      firstPageMilliseconds: 1, furniturePages: pages)
+    let normalized = try await EngineClient.normalizePage(
+      pages[0], documentFingerprint: fingerprint, generationID: "generation_c",
+      language: "es"
+    ).result?.normalizedPage
+
+    XCTAssertEqual(normalized?.units.map(\.text), ["Contenido legible y distinto de la página 0."])
+    XCTAssertEqual(normalized?.omissions.first?.rule, "remove_repeated_footer")
   }
 
   /// A document's stored data is filed under a name the document itself decides (Story 6.25).

@@ -27,6 +27,31 @@ fn canary_returns_one_structured_terminal_event() {
 }
 
 #[test]
+fn spoken_plan_is_available_through_the_shared_contract() {
+    let event = handle_request(
+        r#"{"schema_version":1,"request_id":"req_spoken","command":"plan_spoken_text","payload":{"text":"Una frase, con pausa — y cierre.","language":"es"}}"#
+            .as_bytes(),
+    )
+    .expect("the app and CLI must consume the same spoken plan");
+    let result = serde_json::to_value(event.result).expect("result must serialize");
+
+    assert_eq!(result["frontend_voice"], "es");
+    assert_eq!(
+        result["normalized_text"],
+        "Una frase, con pausa — y cierre."
+    );
+    assert_eq!(
+        result["parts"][1],
+        json!({"kind":"punctuation","value":","})
+    );
+    assert!(
+        result["parts"]
+            .as_array()
+            .is_some_and(|parts| parts.contains(&json!({"kind":"punctuation","value":"—"})))
+    );
+}
+
+#[test]
 fn unknown_schema_version_is_rejected_before_work_starts() {
     let request =
         br#"{"schema_version":2,"request_id":"req_version","command":"canary","payload":{}}"#;
@@ -94,6 +119,81 @@ fn opens_document_with_only_opaque_and_numeric_platform_facts() {
     assert_eq!(result["access_grant_id"], "grant_opaque");
     assert_eq!(result["page_count"], 2);
     assert_eq!(result["first_page_ms"], 125);
+}
+
+#[test]
+fn opening_primes_repeated_furniture_before_the_first_page_is_normalized() {
+    let fingerprint = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+    let pages: Vec<_> = (0..6_u32)
+        .map(|page_index| {
+            json!({
+                "document_fingerprint": fingerprint,
+                "generation_id": "generation_c",
+                "page_index": page_index,
+                "blocks": [
+                    {
+                        "block_id": format!("body-{page_index}"),
+                        "text": format!("Contenido distinto y legible de la página {page_index}."),
+                        "region": {
+                            "page_index": page_index,
+                            "rect_pdf_points": [60.0, 600.0, 380.0, 12.0],
+                            "page_rotation_degrees": 0,
+                            "source_to_page_transform": [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+                            "confidence": 1.0
+                        },
+                        "confidence": 1.0
+                    },
+                    {
+                        "block_id": format!("footer-{page_index}"),
+                        "text": "Published by Digital Commons, 2011",
+                        "region": {
+                            "page_index": page_index,
+                            "rect_pdf_points": [60.0, 5.0, 220.0, 10.0],
+                            "page_rotation_degrees": 0,
+                            "source_to_page_transform": [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+                            "confidence": 1.0
+                        },
+                        "confidence": 1.0
+                    }
+                ]
+            })
+        })
+        .collect();
+    let opened = json!({
+        "schema_version": 1,
+        "request_id": "req_open_primed",
+        "command": "open_document",
+        "payload": {
+            "access_grant_id": "grant_opaque",
+            "document_fingerprint": fingerprint,
+            "page_count": 6,
+            "first_page_ms": 125,
+            "furniture_pages": pages
+        }
+    });
+    handle_request(opened.to_string().as_bytes()).expect("opening should accept its margin sample");
+
+    let normalized = json!({
+        "schema_version": 1,
+        "request_id": "req_normalize_primed",
+        "command": "normalize_page",
+        "payload": {
+            "page": pages[0],
+            "language": "en",
+            "requested_unit": "paragraph",
+            "route": "direct_text",
+            "adapter_status": "completed"
+        }
+    });
+    let event = handle_request(normalized.to_string().as_bytes()).expect("page should normalize");
+    let result = serde_json::to_value(event.result).expect("result must serialize");
+
+    assert_eq!(result["units"].as_array().map(Vec::len), Some(1));
+    assert_eq!(
+        result["units"][0]["text"],
+        "Contenido distinto y legible de la página 0."
+    );
+    assert_eq!(result["omissions"][0]["rule"], "remove_repeated_footer");
 }
 
 /// The document, not the run, names the derived data (Story 6.25).
