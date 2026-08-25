@@ -10,7 +10,7 @@
   "scripts": {
     "lint": "./scripts/verify.sh lint",
     "typecheck": "./scripts/verify.sh typecheck",
-    "test": "./scripts/verify.sh test",
+    "test": "node --test tests/app-icon.test.mjs && ./scripts/verify.sh test",
     "build": "./scripts/verify.sh build"
   }
 }
