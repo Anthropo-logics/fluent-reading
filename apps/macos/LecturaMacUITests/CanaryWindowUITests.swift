@@ -350,11 +350,8 @@ final class ReaderWindowUITests: XCTestCase {
 
   @MainActor
   private func openDocument(_ pdf: URL, in app: XCUIApplication) throws {
-    // The cold-launch budget loop below launches and terminates the app ten times in a row; a
-    // fresh cold launch (Rust FFI init, PDFKit, Vision) can legitimately take longer than 10 s
-    // back-to-back under that load, well outside of what NFR4 itself measures (first page, not
-    // launch).
-    XCTAssertTrue(app.buttons["reader.open"].waitForExistence(timeout: 20))
+    // The menu-bar command is available both on a fresh launch and while another document is open;
+    // the in-content reader.open button intentionally exists only in the empty state.
     app.activate()
     app.typeKey("o", modifierFlags: .command)
     guard app.dialogs.firstMatch.waitForExistence(timeout: 10) else {

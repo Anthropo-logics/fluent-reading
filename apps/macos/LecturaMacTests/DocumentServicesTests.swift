@@ -352,7 +352,9 @@ final class DocumentServicesTests: XCTestCase {
       for block in recognised.blocks {
         let words = block.text.split(separator: " ").first.map(String.init) ?? block.text
         guard
-          let twin = direct.blocks.first(where: { $0.text.hasPrefix(words) || words.hasPrefix($0.text) })
+          let twin = direct.blocks.first(where: {
+            $0.text.hasPrefix(words) || words.hasPrefix($0.text)
+          })
         else { continue }
         let ocrRect = rect(block.region.rectPDFPoints)
         let textRect = rect(twin.region.rectPDFPoints)
@@ -760,13 +762,15 @@ extension DocumentServicesTests {
       // Page space: the line runs *up* the page, because the viewer turns the page a quarter.
       let box = CGRect(x: 120, y: 90, width: 18, height: 220)
       try OCRTextLayer.embed(
-        [0: recognisedPage(["La experiencia vivida del negro": box], rotation: rotation)], into: url)
+        [0: recognisedPage(["La experiencia vivida del negro": box], rotation: rotation)],
+        into: url)
 
       let extracted = await DocumentServices.extractDigitalPage(at: url, pageIndex: 0)
 
       XCTAssertEqual(extracted.status, "completed", "rotation \(rotation)")
       let text = extracted.blocks.map(\.text).joined(separator: " ")
-      XCTAssertTrue(text.contains("experiencia vivida"), "rotation \(rotation), recovered: «\(text)»")
+      XCTAssertTrue(
+        text.contains("experiencia vivida"), "rotation \(rotation), recovered: «\(text)»")
       let rect = try XCTUnwrap(extracted.blocks.first?.region.rectPDFPoints)
       XCTAssertEqual(rect[0], box.minX, accuracy: 8, "rotation \(rotation): x")
       XCTAssertEqual(rect[1], box.minY, accuracy: 8, "rotation \(rotation): y")

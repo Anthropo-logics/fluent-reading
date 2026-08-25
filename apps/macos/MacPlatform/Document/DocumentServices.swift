@@ -1450,7 +1450,10 @@ public enum OCRTextLayer {
     //
     // The origin is the corner the reader sees as bottom-left, expressed in page space, and
     // `length`/`thickness` are the box's extent along and across the line as displayed.
-    let x = points[0], y = points[1], width = points[2], height = points[3]
+    let x = points[0]
+    let y = points[1]
+    let width = points[2]
+    let height = points[3]
     let origin: CGPoint
     let angle: CGFloat
     let length: Double
@@ -1459,7 +1462,9 @@ public enum OCRTextLayer {
     case 90:
       (origin, angle, length, thickness) = (CGPoint(x: x + width, y: y), .pi / 2, height, width)
     case 180:
-      (origin, angle, length, thickness) = (CGPoint(x: x + width, y: y + height), .pi, width, height)
+      (origin, angle, length, thickness) = (
+        CGPoint(x: x + width, y: y + height), .pi, width, height
+      )
     case 270:
       (origin, angle, length, thickness) = (CGPoint(x: x, y: y + height), -.pi / 2, height, width)
     default:

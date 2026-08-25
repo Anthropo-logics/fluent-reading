@@ -7,11 +7,21 @@ La versión que muestra el panel «Acerca de» sale de `MARKETING_VERSION` y
 `CURRENT_PROJECT_VERSION` del proyecto de Xcode. Al preparar una versión hay que subir ambos y
 añadir aquí su sección.
 
-## [No publicado] — 0.1.0 (build 1)
+## [0.2.0] — 2026-08-24 (build 2)
 
-**No existe ninguna release pública.** El proyecto es software libre bajo `GPL-3.0-or-later`
-(`LICENSE`); `NOTICE` enumera los componentes de terceros y las obligaciones que deben resolverse
-antes de distribuir un binario.
+### Añadido
+
+- Icono propio de Lectura Fluida: un libro abierto y un pulso violeta que representan lectura y
+  narración continua.
+
+### Corregido
+
+- La prueba de rendimiento permite reabrir documentos con ⌘O desde el estado de lectura.
+
+## [0.1.0] — 2026-08-22 (build 1)
+
+El proyecto es software libre bajo `GPL-3.0-or-later` (`LICENSE`); `NOTICE` enumera los componentes
+de terceros y sus obligaciones de distribución.
 
 ### Añadido
 

@@ -74,7 +74,7 @@ xcode_build() {
   xcodebuild \
     -project apps/macos/LecturaFluida.xcodeproj \
     -scheme LecturaFluida \
-    "${xcode_derived_data_args[@]}" \
+    "${xcode_derived_data_args[@]+"${xcode_derived_data_args[@]}"}" \
     -configuration "$configuration" \
     -destination 'platform=macOS,arch=arm64' \
     CODE_SIGNING_ALLOWED=NO \
@@ -110,7 +110,7 @@ run_test() {
     -project apps/macos/LecturaFluida.xcodeproj \
     -scheme LecturaFluida \
     -testPlan CI-Fast \
-    "${xcode_derived_data_args[@]}" \
+    "${xcode_derived_data_args[@]+"${xcode_derived_data_args[@]}"}" \
     -destination 'platform=macOS,arch=arm64' \
     CODE_SIGNING_ALLOWED=YES \
     CODE_SIGN_IDENTITY=- \
