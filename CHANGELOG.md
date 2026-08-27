@@ -7,6 +7,15 @@ La versión que muestra el panel «Acerca de» sale de `MARKETING_VERSION` y
 `CURRENT_PROJECT_VERSION` del proyecto de Xcode. Al preparar una versión hay que subir ambos y
 añadir aquí su sección.
 
+## [0.4.1] — 2026-08-27 (build 5)
+
+### Corregido
+
+- El worker usado por el CLI procesa cada página mediante la misma ruta automática de layout y OCR
+  que la aplicación; los cuadros, abstracts y columnas ya no se intercalan por renglón.
+- La página inicial de `OspinaTascon2019-fulltext.pdf` conserva primero el abstract completo y luego
+  el cuerpo derecho, con degradación audible si la evidencia estructural resulta insuficiente.
+
 ## [0.4.0] — 2026-08-25 (build 4)
 
 ### Añadido

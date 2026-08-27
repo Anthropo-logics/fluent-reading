@@ -72,7 +72,7 @@ private struct WorkerResponse: Encodable {
 @main
 @MainActor
 private struct LecturaMacWorker {
-  static func main() {
+  static func main() async {
     let decoder = JSONDecoder()
     decoder.keyDecodingStrategy = .convertFromSnakeCase
     let encoder = JSONEncoder()
@@ -115,8 +115,14 @@ private struct LecturaMacWorker {
           throw WorkerFailure.invalidRequest
         }
         let document = try DocumentServices.openReadOnly(at: URL(fileURLWithPath: path))
-        let directPages = DocumentServices.extractDigitalPages(
-          from: document, pageLimit: request.payload.pageLimit.map(Int.init))
+        let pageCount = min(
+          document.pageCount, request.payload.pageLimit.map(Int.init) ?? document.pageCount)
+        var directPages = [DigitalPageResult]()
+        for pageIndex in 0..<pageCount {
+          directPages.append(
+            await DocumentServices.extractDigitalPage(
+              at: URL(fileURLWithPath: path), pageIndex: pageIndex))
+        }
         let forced = Set(request.payload.forceOCRPages ?? [])
         // ponytail: avoid speculative OCR across very large digital documents; the
         // incremental scheduler replaces this guard when Story 2.3 owns paging.
@@ -127,12 +133,12 @@ private struct LecturaMacWorker {
               page.blocks.isEmpty || document.pageCount <= 64 ? Int(page.pageIndex) : nil
             })
           : Set(forced.map(Int.init))
-        let ocrPages = ocrIndexes.sorted().compactMap { pageIndex in
+        var ocrPages = [(DigitalPageResult, UInt64)]()
+        for pageIndex in ocrIndexes.sorted() {
           let started = ContinuousClock.now
-          let page = DocumentServices.extractOCRPages(
-            from: document, pageIndexes: [pageIndex],
-            language: request.payload.language ?? "en"
-          ).first
+          let page = await DocumentServices.extractOCRPage(
+            at: URL(fileURLWithPath: path), pageIndex: pageIndex,
+            language: request.payload.language ?? "en")
           let elapsed = started.duration(to: .now)
           let elapsedMs = UInt64(
             max(
@@ -140,7 +146,7 @@ private struct LecturaMacWorker {
               elapsed.components.seconds * 1_000
                 + elapsed.components.attoseconds / 1_000_000_000_000_000
             ))
-          return page.map { ($0, elapsedMs) }
+          ocrPages.append((page, elapsedMs))
         }
         let candidates = directPages.map { direct in
           let ocr = ocrPages.first { $0.0.pageIndex == direct.pageIndex }
