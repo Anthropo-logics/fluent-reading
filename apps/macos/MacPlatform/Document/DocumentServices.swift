@@ -6,6 +6,44 @@ import PDFKit
 import Vision
 import os
 
+private final class RasterContentProbe {
+  let resources: CGPDFDictionaryRef
+  var transform = CGAffineTransform.identity
+  var savedTransforms = [CGAffineTransform]()
+  var rects = [CGRect]()
+
+  init(resources: CGPDFDictionaryRef) {
+    self.resources = resources
+  }
+}
+
+private func rasterProbe(_ info: UnsafeMutableRawPointer?) -> RasterContentProbe {
+  Unmanaged<RasterContentProbe>.fromOpaque(info!).takeUnretainedValue()
+}
+
+private func rasterNumber(_ scanner: CGPDFScannerRef) -> CGFloat? {
+  var value: CGPDFReal = 0
+  return CGPDFScannerPopNumber(scanner, &value) ? CGFloat(value) : nil
+}
+
+private func rasterName(_ scanner: CGPDFScannerRef) -> String? {
+  var value: UnsafePointer<Int8>?
+  return CGPDFScannerPopName(scanner, &value) ? value.map(String.init(cString:)) : nil
+}
+
+private func locateRasterXObject(_ name: String, probe: RasterContentProbe) {
+  var stream: CGPDFStreamRef?
+  guard CGPDFDictionaryGetStream(probe.resources, name, &stream), let stream,
+    let dictionary = CGPDFStreamGetDictionary(stream)
+  else { return }
+  var subtype: UnsafePointer<CChar>?
+  if CGPDFDictionaryGetName(dictionary, "Subtype", &subtype), let subtype,
+    String(cString: subtype) == "Image"
+  {
+    probe.rects.append(CGRect(x: 0, y: 0, width: 1, height: 1).applying(probe.transform))
+  }
+}
+
 /// The language a document is actually written in, read off the text the app already extracts
 /// (Story 6.11).
 ///
@@ -249,11 +287,15 @@ public struct DocumentOutlineEntry: Identifiable, Equatable, Sendable {
 
 /// A passage rendered over the page in place of its source text.
 public struct TranslatedOverlayBlock: Equatable, Sendable {
+  public let unitID: String
   public let pageIndex: Int
   public let rectPDFPoints: [Double]
   public let text: String
 
-  public init(pageIndex: Int, rectPDFPoints: [Double], text: String) {
+  public init(
+    unitID: String, pageIndex: Int, rectPDFPoints: [Double], text: String
+  ) {
+    self.unitID = unitID
     self.pageIndex = pageIndex
     self.rectPDFPoints = rectPDFPoints
     self.text = text
@@ -307,6 +349,10 @@ public final class ReadOnlyPDFView: PDFView {
   /// view, so a click had been matched against the passages of whichever page the model believed
   /// was current.
   public var onDoubleClickPagePoint: ((CGPoint, Int) -> Void)?
+  public var onDoubleClickTranslatedUnit: ((String, Int) -> Void)?
+  public var onVisiblePageChange: ((Int) -> Void)?
+
+  var hasVisibleTranslationOverlay: Bool { translatedScroll?.isHidden == false }
 
   public override func mouseDown(with event: NSEvent) {
     if event.clickCount == 2, let page = currentPage, let document {
@@ -344,9 +390,20 @@ public final class ReadOnlyPDFView: PDFView {
     indicatorOverlay.layer?.addSublayer(sourceIndicator)
     indicatorOverlay.autoresizingMask = [.width, .height]
     addSubview(indicatorOverlay, positioned: .above, relativeTo: nil)
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(visiblePageDidChange(_:)), name: .PDFViewPageChanged, object: self)
   }
 
   required init?(coder: NSCoder) { nil }
+
+  @objc private func visiblePageDidChange(_ notification: Notification) {
+    guard notification.object as? PDFView === self, let document, let page = currentPage else {
+      return
+    }
+    translatedScroll?.isHidden = true
+    let pageIndex = document.index(for: page)
+    if pageIndex >= 0 { onVisiblePageChange?(pageIndex) }
+  }
 
   public override func perform(_ action: PDFAction) {}
 
@@ -427,15 +484,12 @@ public final class ReadOnlyPDFView: PDFView {
     let spacing: CGFloat = bodySize * 0.9
     for (label, block) in zip(translatedLabels, visible) {
       label.stringValue = block.text
+      label.setAccessibilityIdentifier("reader.pdf.translation.\(block.unitID)")
       label.font = font
       let height = label.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
       label.frame = CGRect(x: 4, y: offsetY, width: width, height: height)
-      // The double click reports the centre of the source block directly in page-space points,
-      // which the reader already knows how to map back to its unit — no on-screen hit test needed.
-      let rect = block.rectPDFPoints
       label.onDoubleClick = { [weak self] in
-        self?.onDoubleClickPagePoint?(
-          CGPoint(x: rect[0] + rect[2] / 2, y: rect[1] + rect[3] / 2), block.pageIndex)
+        self?.onDoubleClickTranslatedUnit?(block.unitID, block.pageIndex)
       }
       offsetY += height + spacing
     }
@@ -609,11 +663,12 @@ public struct DigitalPageResult: Codable, Equatable, Sendable {
   public let layoutStatus: String?
   public let layoutProcessorRevision: String?
   public let layoutElapsedMilliseconds: UInt64?
+  public let rasterContentDetected: Bool?
 
   public init(
     pageIndex: UInt32, status: String, blocks: [DigitalTextBlock], errorCode: String?,
     layoutStatus: String? = nil, layoutProcessorRevision: String? = nil,
-    layoutElapsedMilliseconds: UInt64? = nil
+    layoutElapsedMilliseconds: UInt64? = nil, rasterContentDetected: Bool? = nil
   ) {
     self.pageIndex = pageIndex
     self.status = status
@@ -622,6 +677,7 @@ public struct DigitalPageResult: Codable, Equatable, Sendable {
     self.layoutStatus = layoutStatus
     self.layoutProcessorRevision = layoutProcessorRevision
     self.layoutElapsedMilliseconds = layoutElapsedMilliseconds
+    self.rasterContentDetected = rasterContentDetected
   }
 
   enum CodingKeys: String, CodingKey {
@@ -631,6 +687,7 @@ public struct DigitalPageResult: Codable, Equatable, Sendable {
     case layoutStatus = "layout_status"
     case layoutProcessorRevision = "layout_processor_revision"
     case layoutElapsedMilliseconds = "layout_elapsed_milliseconds"
+    case rasterContentDetected = "raster_content_detected"
   }
 }
 
@@ -656,45 +713,20 @@ public enum DocumentServices {
   /// Confidence/order validation happens downstream in `AudiobookExporter.chapterMarks`.
   public static func outlineEntries(from document: PDFDocument) -> [(title: String, pageIndex: Int)]
   {
-    guard let root = document.outlineRoot else { return [] }
-    var entries: [(title: String, pageIndex: Int)] = []
-    func walk(_ node: PDFOutline) {
-      for index in 0..<node.numberOfChildren {
-        guard let child = node.child(at: index) else { continue }
-        if let label = child.label, let page = child.destination?.page {
-          let pageIndex = document.index(for: page)
-          if pageIndex >= 0 { entries.append((label, pageIndex)) }
-        }
-        walk(child)
-      }
-    }
-    walk(root)
-    return entries
+    outlineNodes(from: document).map { ($0.label, $0.pageIndex) }
   }
 
-  /// Outline entries keeping their nesting depth, for a navigable table of contents. The flat
-  /// `outlineEntries` stays as it is because chapter marks for export do not need the hierarchy.
+  /// Outline entries keeping their nesting depth, for a navigable table of contents. Chapter marks
+  /// retain raw labels while this projection trims labels and rejects an unreadable outline.
   public nonisolated static func outlineOutline(from document: PDFDocument)
     -> [DocumentOutlineEntry]
   {
-    guard let root = document.outlineRoot else { return [] }
-    var entries: [DocumentOutlineEntry] = []
-    func walk(_ node: PDFOutline, level: Int) {
-      for index in 0..<node.numberOfChildren {
-        guard let child = node.child(at: index) else { continue }
-        if let label = child.label?.trimmingCharacters(in: .whitespacesAndNewlines),
-          !label.isEmpty, let page = child.destination?.page
-        {
-          let pageIndex = document.index(for: page)
-          if pageIndex >= 0 {
-            entries.append(
-              DocumentOutlineEntry(title: label, pageIndex: pageIndex, level: level))
-          }
-        }
-        walk(child, level: level + 1)
-      }
+    let entries = outlineNodes(from: document).compactMap { entry -> DocumentOutlineEntry? in
+      let title = entry.label.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !title.isEmpty else { return nil }
+      return DocumentOutlineEntry(
+        title: title, pageIndex: entry.pageIndex, level: entry.level)
     }
-    walk(root, level: 0)
     // Scanned books often ship a machine-generated outline whose labels carry no words at all
     // ("f - 0002"). Such an outline is worse than none: it hides the headings recovered from the
     // page behind entries a reader cannot navigate by.
@@ -702,6 +734,25 @@ public enum DocumentServices {
       entry.title.split(whereSeparator: { !$0.isLetter }).contains { $0.count >= 3 }
     }
     return readable.count * 2 >= entries.count ? entries : []
+  }
+
+  nonisolated private static func outlineNodes(from document: PDFDocument)
+    -> [(label: String, pageIndex: Int, level: Int)]
+  {
+    guard let root = document.outlineRoot else { return [] }
+    var entries: [(label: String, pageIndex: Int, level: Int)] = []
+    func walk(_ node: PDFOutline, level: Int) {
+      for index in 0..<node.numberOfChildren {
+        guard let child = node.child(at: index) else { continue }
+        if let label = child.label, let page = child.destination?.page {
+          let pageIndex = document.index(for: page)
+          if pageIndex >= 0 { entries.append((label, pageIndex, level)) }
+        }
+        walk(child, level: level + 1)
+      }
+    }
+    walk(root, level: 0)
+    return entries
   }
 
   /// Builds a table of contents from the PDF's own text layer, using typographic size rather than
@@ -847,6 +898,190 @@ public enum DocumentServices {
     return (0..<count).map { extractDigitalPage(from: document, pageIndex: $0) }
   }
 
+  /// A suspicious character starts OCR; it never decides the replacement. Vision must confirm a
+  /// different glyph between matching text on both sides before the digital layer is changed.
+  nonisolated public static func needsOCRRepair(_ page: DigitalPageResult) -> Bool {
+    page.blocks.contains { textNeedsOCRRepair($0.text) }
+  }
+
+  /// Uses OCR as corroborating evidence for damaged character-map runs while retaining every
+  /// digital character outside those runs, including superscript note calls and legitimate `#`.
+  nonisolated public static func repairDigitalText(
+    _ direct: DigitalPageResult, with recognized: DigitalPageResult
+  ) -> DigitalPageResult {
+    guard direct.pageIndex == recognized.pageIndex, !recognized.blocks.isEmpty else {
+      return direct
+    }
+    var lines = [[DigitalTextBlock]]()
+    for block in direct.blocks {
+      if let previous = lines.last?.last, sameVisualLine(previous, block) {
+        lines[lines.count - 1].append(block)
+      } else {
+        lines.append([block])
+      }
+    }
+    let repaired = lines.flatMap { line -> [DigitalTextBlock] in
+      let source = line.map(\.text).joined()
+      guard
+        textNeedsOCRRepair(source),
+        let candidate = bestOCRLine(for: line, in: recognized.blocks)
+      else { return line }
+      let text = repairSuspiciousRuns(in: source, from: candidate.text)
+      guard text != source else { return line }
+      let spokenSource = line.map { $0.spokenText ?? $0.text }.joined()
+      let first = line[0]
+      let rects = line.map { $0.region.rectPDFPoints }
+      let minX = rects.map { $0[0] }.min() ?? first.region.rectPDFPoints[0]
+      let minY = rects.map { $0[1] }.min() ?? first.region.rectPDFPoints[1]
+      let maxX = rects.map { $0[0] + $0[2] }.max() ?? minX
+      let maxY = rects.map { $0[1] + $0[3] }.max() ?? minY
+      let confidence = min(line.map(\.confidence).min() ?? 1, candidate.confidence)
+      return [
+        DigitalTextBlock(
+          blockID: first.blockID, text: text,
+          spokenText: repairSuspiciousRuns(in: spokenSource, from: candidate.text),
+          region: DigitalSourceRegion(
+            pageIndex: first.region.pageIndex,
+            rectPDFPoints: [minX, minY, maxX - minX, maxY - minY],
+            pageRotationDegrees: first.region.pageRotationDegrees,
+            sourceToPageTransform: first.region.sourceToPageTransform, confidence: confidence),
+          confidence: confidence, layoutRole: first.layoutRole,
+          layoutConfidence: first.layoutConfidence, layoutOrder: first.layoutOrder,
+          narrationDisposition: first.narrationDisposition,
+          physicalPageIndex: first.physicalPageIndex)
+      ]
+    }
+    return DigitalPageResult(
+      pageIndex: direct.pageIndex, status: direct.status, blocks: repaired,
+      errorCode: direct.errorCode, layoutStatus: direct.layoutStatus,
+      layoutProcessorRevision: direct.layoutProcessorRevision,
+      layoutElapsedMilliseconds: direct.layoutElapsedMilliseconds)
+  }
+
+  nonisolated private static func textNeedsOCRRepair(_ text: String) -> Bool {
+    let characters = Array(text)
+    return characters.indices.contains { index in
+      switch characters[index] {
+      case "#", "�": return true
+      case "!":
+        let before = index > 0 ? characters[index - 1] : nil
+        let after = index + 1 < characters.count ? characters[index + 1] : nil
+        return before == ":" || (before?.isWhitespace == false && after?.isWhitespace == false)
+      default: return false
+      }
+    }
+  }
+
+  nonisolated private static func sameVisualLine(
+    _ left: DigitalTextBlock, _ right: DigitalTextBlock
+  ) -> Bool {
+    let a = left.region.rectPDFPoints
+    let b = right.region.rectPDFPoints
+    let height = max(a[3], b[3])
+    let gap = b[0] - (a[0] + a[2])
+    return abs((a[1] + a[3] / 2) - (b[1] + b[3] / 2)) < height * 0.5
+      && (-height * 0.5...height).contains(gap)
+  }
+
+  nonisolated private static func bestOCRLine(
+    for line: [DigitalTextBlock], in candidates: [DigitalTextBlock]
+  ) -> DigitalTextBlock? {
+    let source = Array(line.map(\.text).joined())
+    let rects = line.map { $0.region.rectPDFPoints }
+    let midY = ((rects.map { $0[1] }.min() ?? 0) + (rects.map { $0[1] + $0[3] }.max() ?? 0)) / 2
+    let height = rects.map { $0[3] }.max() ?? 0
+    var best: (block: DigitalTextBlock, score: Double)?
+    for candidate in candidates where candidate.confidence >= 0.75 {
+      let rect = candidate.region.rectPDFPoints
+      guard abs(midY - (rect[1] + rect[3] / 2)) <= max(height, rect[3]) else { continue }
+      let recognized = Array(candidate.text)
+      let matches = longestCommonSubsequence(source, recognized).count
+      let score = Double(matches) / Double(max(1, min(source.count, recognized.count)))
+      if score >= 0.6, best == nil || score > best!.score { best = (candidate, score) }
+    }
+    return best?.block
+  }
+
+  /// ponytail: lines are short, so the O(n²) LCS is smaller and safer than a general diff engine;
+  /// replace it only if profiling finds OCR reconciliation material at page scale.
+  nonisolated private static func longestCommonSubsequence(
+    _ source: [Character], _ recognized: [Character]
+  ) -> [(Int, Int)] {
+    var lengths = Array(
+      repeating: Array(repeating: 0, count: recognized.count + 1), count: source.count + 1)
+    for i in source.indices {
+      for j in recognized.indices {
+        lengths[i + 1][j + 1] =
+          equivalentGlyph(source[i], recognized[j])
+          ? lengths[i][j] + 1 : max(lengths[i][j + 1], lengths[i + 1][j])
+      }
+    }
+    var pairs = [(Int, Int)]()
+    var i = source.count
+    var j = recognized.count
+    while i > 0, j > 0 {
+      if equivalentGlyph(source[i - 1], recognized[j - 1]) {
+        pairs.append((i - 1, j - 1))
+        i -= 1
+        j -= 1
+      } else if lengths[i - 1][j] >= lengths[i][j - 1] {
+        i -= 1
+      } else {
+        j -= 1
+      }
+    }
+    return pairs.reversed()
+  }
+
+  nonisolated private static func equivalentGlyph(_ left: Character, _ right: Character) -> Bool {
+    if left == right { return true }
+    let quotes: Set<Character> = ["'", "’", "‘"]
+    let dashes: Set<Character> = ["-", "–", "—", "−"]
+    return (quotes.contains(left) && quotes.contains(right))
+      || (dashes.contains(left) && dashes.contains(right))
+  }
+
+  nonisolated private static func repairSuspiciousRuns(
+    in sourceText: String, from recognizedText: String
+  ) -> String {
+    let source = Array(sourceText)
+    let recognized = Array(recognizedText)
+    let matches = longestCommonSubsequence(source, recognized)
+    guard !matches.isEmpty else { return sourceText }
+    let boundaries = [(-1, -1)] + matches + [(source.count, recognized.count)]
+    var output = ""
+    for index in 1..<boundaries.count {
+      let previous = boundaries[index - 1]
+      let current = boundaries[index]
+      let directGap = Array(source[(previous.0 + 1)..<current.0])
+      let ocrGap = Array(recognized[(previous.1 + 1)..<current.1])
+      let anchored = previous.0 >= 0 && current.0 < source.count
+      let whitespaceConfirmed =
+        (!ocrGap.isEmpty && ocrGap.allSatisfy(\.isWhitespace))
+        || (ocrGap.isEmpty && current.1 < recognized.count
+          && recognized[current.1].isWhitespace && source[current.0].isWhitespace)
+      let separatorConfirmed =
+        whitespaceConfirmed
+        || (!ocrGap.isEmpty && ocrGap.count <= 4
+          && ocrGap.allSatisfy { !$0.isLetter && !$0.isNumber })
+      if anchored, directGap.contains(where: { $0 == "!" }),
+        directGap.allSatisfy({ $0 == "!" || $0.isNumber || $0.isWhitespace }),
+        separatorConfirmed
+      {
+        output += String(directGap.map { $0 == "!" ? " " : $0 })
+      } else if anchored, !directGap.isEmpty,
+        directGap.allSatisfy({ $0 == "#" || $0 == "!" || $0 == "�" }),
+        (1...4).contains(ocrGap.count), ocrGap.allSatisfy(\.isLetter)
+      {
+        output += String(ocrGap)
+      } else {
+        output += String(directGap)
+      }
+      if current.0 < source.count { output.append(source[current.0]) }
+    }
+    return output
+  }
+
   /// A reader-chosen orientation for one page, applied to the copy this extraction opens.
   ///
   /// Some pages are printed sideways and say nothing about it: a landscape table set across a
@@ -868,7 +1103,7 @@ public enum DocumentServices {
   }
 
   public static func extractDigitalPage(
-    at url: URL, pageIndex: Int, rotation: Int? = nil
+    at url: URL, pageIndex: Int, language: String = "en", rotation: Int? = nil
   ) async -> DigitalPageResult {
     let extraction = Task.detached(priority: .utility) {
       guard url.isFileURL, let document = PDFDocument(url: url), !document.isLocked else {
@@ -882,10 +1117,17 @@ public enum DocumentServices {
           errorCode: "LF_PDF_PAGE_MISSING")
       }
       apply(rotation, to: page)
-      let text = autoreleasepool { extractDigitalPage(from: document, pageIndex: pageIndex) }
+      var text = autoreleasepool { extractDigitalPage(from: document, pageIndex: pageIndex) }
       guard !Task.isCancelled else { return text }
-      let layout = await classify(
-        SendablePDFPage(value: page), pageIndex: pageIndex, rotation: page.rotation)
+      let layout = await classify(SendablePDFPage(value: page), rotation: page.rotation)
+      if needsOCRRepair(text) {
+        let recognized = autoreleasepool {
+          extractOCRPage(
+            from: page, pageIndex: pageIndex, language: language,
+            splitSpread: shouldSplitOCR(for: layout))
+        }
+        text = repairDigitalText(text, with: recognized)
+      }
       return result(text, enrichedWith: layout)
     }
     return await withTaskCancellationHandler {
@@ -932,8 +1174,7 @@ public enum DocumentServices {
           errorCode: "LF_PDF_PAGE_MISSING")
       }
       apply(rotation, to: page)
-      let layout = await classify(
-        SendablePDFPage(value: page), pageIndex: pageIndex, rotation: page.rotation)
+      let layout = await classify(SendablePDFPage(value: page), rotation: page.rotation)
       guard !Task.isCancelled else {
         return DigitalPageResult(
           pageIndex: UInt32(pageIndex), status: "failed", blocks: [],
@@ -961,7 +1202,8 @@ public enum DocumentServices {
       blocks: DocumentLayoutAlignment.enrich(source.blocks, with: layout),
       errorCode: source.errorCode, layoutStatus: layout.status,
       layoutProcessorRevision: layout.processorRevision,
-      layoutElapsedMilliseconds: layout.elapsedMilliseconds)
+      layoutElapsedMilliseconds: layout.elapsedMilliseconds,
+      rasterContentDetected: source.rasterContentDetected)
   }
 
   nonisolated static func shouldSplitOCR(for layout: DocumentLayoutResult) -> Bool {
@@ -969,10 +1211,9 @@ public enum DocumentServices {
   }
 
   nonisolated private static func classify(
-    _ page: SendablePDFPage, pageIndex: Int, rotation: Int
+    _ page: SendablePDFPage, rotation: Int
   ) async -> DocumentLayoutResult {
-    await DocumentLayoutClassifier.shared.classify(
-      at: page.value, pageIndex: pageIndex, rotation: rotation)
+    await DocumentLayoutClassifier.shared.classify(at: page.value, rotation: rotation)
   }
 
   nonisolated private static func extractDigitalPage(
@@ -1053,11 +1294,75 @@ public enum DocumentServices {
         confidence: 1
       )
     }
+    let rasterContentDetected = containsUncoveredRasterContent(page, blocks: blocks)
     return DigitalPageResult(
       pageIndex: UInt32(pageIndex),
       status: blocks.isEmpty ? "failed" : "completed",
       blocks: blocks,
-      errorCode: blocks.isEmpty ? "LF_PDF_PAGE_NO_TEXT" : nil)
+      errorCode: blocks.isEmpty ? "LF_PDF_PAGE_NO_TEXT" : nil,
+      rasterContentDetected: rasterContentDetected)
+  }
+
+  /// Signals that direct extraction cannot account for every visible region. OCR still decides
+  /// whether the raster carries words; this scan only reads the page resource dictionary.
+  nonisolated private static func containsUncoveredRasterContent(
+    _ page: PDFPage, blocks: [DigitalTextBlock]
+  ) -> Bool {
+    guard let pageRef = page.pageRef, let dictionary = pageRef.dictionary else { return false }
+    var resources: CGPDFDictionaryRef?
+    guard CGPDFDictionaryGetDictionary(dictionary, "Resources", &resources), let resources else {
+      return false
+    }
+    var xobjects: CGPDFDictionaryRef?
+    guard CGPDFDictionaryGetDictionary(resources, "XObject", &xobjects), let xobjects else {
+      return false
+    }
+    guard let table = CGPDFOperatorTableCreate() else { return false }
+    defer { CGPDFOperatorTableRelease(table) }
+    CGPDFOperatorTableSetCallback(table, "q") { _, info in
+      let probe = rasterProbe(info)
+      probe.savedTransforms.append(probe.transform)
+    }
+    CGPDFOperatorTableSetCallback(table, "Q") { _, info in
+      let probe = rasterProbe(info)
+      if let restored = probe.savedTransforms.popLast() { probe.transform = restored }
+    }
+    CGPDFOperatorTableSetCallback(table, "cm") { scanner, info in
+      guard let f = rasterNumber(scanner), let e = rasterNumber(scanner),
+        let d = rasterNumber(scanner), let c = rasterNumber(scanner),
+        let b = rasterNumber(scanner), let a = rasterNumber(scanner)
+      else { return }
+      let probe = rasterProbe(info)
+      probe.transform = CGAffineTransform(a: a, b: b, c: c, d: d, tx: e, ty: f)
+        .concatenating(probe.transform)
+    }
+    CGPDFOperatorTableSetCallback(table, "Do") { scanner, info in
+      guard let name = rasterName(scanner) else { return }
+      locateRasterXObject(name, probe: rasterProbe(info))
+    }
+    // ponytail: direct page XObjects cover the corpus; recurse into Form XObjects only when a
+    // failing document proves nested raster content affects the reader route.
+    let probe = RasterContentProbe(resources: xobjects)
+    let stream = CGPDFContentStreamCreateWithPage(pageRef)
+    let scanner = CGPDFScannerCreate(stream, table, Unmanaged.passUnretained(probe).toOpaque())
+    CGPDFScannerScan(scanner)
+    CGPDFScannerRelease(scanner)
+    CGPDFContentStreamRelease(stream)
+
+    let pageBounds = page.bounds(for: .cropBox)
+    let blockCenters = blocks.map {
+      let rect = $0.region.rectPDFPoints
+      return CGPoint(x: rect[0] + rect[2] / 2, y: rect[1] + rect[3] / 2)
+    }
+    return probe.rects.contains { rect in
+      let raster = rect.standardized.intersection(pageBounds)
+      let fullPageTextLayer =
+        !blockCenters.isEmpty
+        && raster.width * raster.height >= pageBounds.width * pageBounds.height * 0.75
+        && blockCenters.allSatisfy(raster.contains)
+
+      return !raster.isNull && raster.width > 1 && raster.height > 1 && !fullPageTextLayer
+    }
   }
 
   nonisolated private static func openingNoteNumeral(_ text: String) -> String? {

@@ -21,7 +21,7 @@ final class DocumentLayoutServicesTests: XCTestCase {
     setBox([0.5, 0.6, 0.8, 0.3], in: boxes, query: 1)
 
     let regions = DocumentLayoutPostprocessor.decode(
-      classLogits: classLogits, boxes: boxes, orderLogits: orderLogits, pageIndex: 0,
+      classLogits: classLogits, boxes: boxes, orderLogits: orderLogits,
       pageBounds: CGRect(x: 0, y: 0, width: 600, height: 800), pageRotationDegrees: 0,
       physicalPageIndex: 0, orderOffset: 0)
 
@@ -42,7 +42,7 @@ final class DocumentLayoutServicesTests: XCTestCase {
 
     XCTAssertEqual(
       DocumentLayoutPostprocessor.decode(
-        classLogits: logits, boxes: boxes, orderLogits: order, pageIndex: 0,
+        classLogits: logits, boxes: boxes, orderLogits: order,
         pageBounds: CGRect(x: 0, y: 0, width: 600, height: 800), pageRotationDegrees: 0,
         physicalPageIndex: 0, orderOffset: 0), [])
   }
@@ -55,7 +55,7 @@ final class DocumentLayoutServicesTests: XCTestCase {
 
     XCTAssertEqual(
       DocumentLayoutPostprocessor.decode(
-        classLogits: logits, boxes: boxes, orderLogits: order, pageIndex: 0,
+        classLogits: logits, boxes: boxes, orderLogits: order,
         pageBounds: CGRect(x: 0, y: 0, width: 600, height: 800), pageRotationDegrees: 0,
         physicalPageIndex: 0, orderOffset: 0), [])
   }
@@ -69,13 +69,13 @@ final class DocumentLayoutServicesTests: XCTestCase {
     let bounds = CGRect(x: 10, y: 20, width: 600, height: 800)
 
     let upright = DocumentLayoutPostprocessor.decode(
-      classLogits: classLogits, boxes: boxes, orderLogits: order, pageIndex: 0,
+      classLogits: classLogits, boxes: boxes, orderLogits: order,
       pageBounds: bounds, pageRotationDegrees: 0, physicalPageIndex: 0, orderOffset: 0)
     let ninety = DocumentLayoutPostprocessor.decode(
-      classLogits: classLogits, boxes: boxes, orderLogits: order, pageIndex: 0,
+      classLogits: classLogits, boxes: boxes, orderLogits: order,
       pageBounds: bounds, pageRotationDegrees: 90, physicalPageIndex: 0, orderOffset: 0)
     let twoSeventy = DocumentLayoutPostprocessor.decode(
-      classLogits: classLogits, boxes: boxes, orderLogits: order, pageIndex: 0,
+      classLogits: classLogits, boxes: boxes, orderLogits: order,
       pageBounds: bounds, pageRotationDegrees: 270, physicalPageIndex: 0, orderOffset: 0)
 
     assertRect(upright[0].rectPDFPoints, equals: [100, 700, 120, 80])
@@ -91,7 +91,7 @@ final class DocumentLayoutServicesTests: XCTestCase {
     setBox([0.25, 0.9, 0.2, 0.1], in: boxes, query: 0)
 
     let regions = DocumentLayoutPostprocessor.decode(
-      classLogits: classLogits, boxes: boxes, orderLogits: order, pageIndex: 0,
+      classLogits: classLogits, boxes: boxes, orderLogits: order,
       pageBounds: CGRect(x: 10, y: 20, width: 600, height: 800), pageRotationDegrees: 0,
       physicalPageIndex: 0, orderOffset: 0)
 
@@ -120,11 +120,11 @@ final class DocumentLayoutServicesTests: XCTestCase {
     let bounds = CGRect(x: 10, y: 20, width: 600, height: 800)
 
     let left = DocumentLayoutPostprocessor.decode(
-      classLogits: classLogits, boxes: boxes, orderLogits: order, pageIndex: 0,
+      classLogits: classLogits, boxes: boxes, orderLogits: order,
       pageBounds: bounds, pageRotationDegrees: 90, physicalPageIndex: 0, orderOffset: 0,
       regionOfInterest: CGRect(x: 0, y: 0, width: 0.5, height: 1))
     let right = DocumentLayoutPostprocessor.decode(
-      classLogits: classLogits, boxes: boxes, orderLogits: order, pageIndex: 0,
+      classLogits: classLogits, boxes: boxes, orderLogits: order,
       pageBounds: bounds, pageRotationDegrees: 90, physicalPageIndex: 1, orderOffset: 1,
       regionOfInterest: CGRect(x: 0.5, y: 0, width: 0.5, height: 1))
 
@@ -170,33 +170,7 @@ final class DocumentLayoutServicesTests: XCTestCase {
         left: [], right: [region(.text, [0, 0, 1, 1])]))
   }
 
-  func testSpreadHalfBoundsFollowDisplayedLeftThenRightAtEveryQuarterTurn() throws {
-    let bounds = CGRect(x: 10, y: 20, width: 600, height: 800)
-    let expected = [
-      0: [
-        CGRect(x: 10, y: 20, width: 300, height: 800),
-        CGRect(x: 310, y: 20, width: 300, height: 800),
-      ],
-      90: [
-        CGRect(x: 10, y: 20, width: 600, height: 400),
-        CGRect(x: 10, y: 420, width: 600, height: 400),
-      ],
-      180: [
-        CGRect(x: 310, y: 20, width: 300, height: 800),
-        CGRect(x: 10, y: 20, width: 300, height: 800),
-      ],
-      270: [
-        CGRect(x: 10, y: 420, width: 600, height: 400),
-        CGRect(x: 10, y: 20, width: 600, height: 400),
-      ],
-    ]
-    for rotation in [0, 90, 180, 270] {
-      let halves = DocumentLayoutClassifier.spreadPageBounds(
-        pageBounds: bounds, rotation: rotation)
-      XCTAssertEqual(halves.left, expected[rotation]?[0], "left at \(rotation)°")
-      XCTAssertEqual(halves.right, expected[rotation]?[1], "right at \(rotation)°")
-    }
-
+  func testCombinedSpreadRegionsPreservePhysicalPageOrder() throws {
     let combined = try XCTUnwrap(
       DocumentLayoutClassifier.combinedSpreadRegions(
         left: [region(.text, [10, 20, 50, 20], physicalPageIndex: 0)],

@@ -97,4 +97,31 @@ final class InterfaceLanguageTests: XCTestCase {
       InterfaceLanguage.allCases.compactMap(\.localizationCode).sorted(),
       InterfaceLanguage.supportedLocalizations.sorted())
   }
+
+  func testLanguageRestartReadingStateIsValidatedAndConsumedOnce() throws {
+    let state = try XCTUnwrap(
+      LanguageRestartReadingState(
+        documentBookmark: Data("bookmark".utf8), pageIndex: 17, unitID: "unit-42",
+        readingSurface: "immersion", trackingUnit: "sentence", voiceLanguage: "es",
+        voiceID: "ef_dora", narrationRate: 1.25, narrationSource: "original",
+        translationTargetLanguage: "", resumesNarration: true))
+
+    XCTAssertTrue(LanguageRestartReadingStore.save(state, defaults: defaults))
+    XCTAssertEqual(LanguageRestartReadingStore.take(defaults: defaults), state)
+    XCTAssertNil(LanguageRestartReadingStore.take(defaults: defaults))
+
+    defaults.set(Data("not-json".utf8), forKey: LanguageRestartReadingStore.key)
+    XCTAssertNil(LanguageRestartReadingStore.take(defaults: defaults))
+    XCTAssertNil(defaults.data(forKey: LanguageRestartReadingStore.key))
+    XCTAssertNil(
+      LanguageRestartReadingState(
+        documentBookmark: Data(), pageIndex: -1, unitID: "", readingSurface: "unknown",
+        trackingUnit: "paragraph", voiceLanguage: "", voiceID: "", narrationRate: .infinity,
+        narrationSource: "original", translationTargetLanguage: "", resumesNarration: false))
+  }
+
+  @MainActor
+  func testMalformedBookmarkCannotRestoreAnArbitraryDocument() {
+    XCTAssertNil(FileServices.restorePDF(from: Data("not-a-bookmark".utf8)))
+  }
 }

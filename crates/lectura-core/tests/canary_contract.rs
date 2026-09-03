@@ -437,6 +437,16 @@ fn routes_empty_direct_extraction_to_ocr_without_trusted_units() {
 }
 
 #[test]
+fn routes_detected_raster_content_to_ocr_even_when_direct_text_is_useful() {
+    let event = handle_request(br#"{"schema_version":1,"request_id":"req_mixed_route","command":"normalize_page","payload":{"page":{"document_fingerprint":"abc123","generation_id":"generation_abc123","page_index":0,"blocks":[{"block_id":"page-0-block-0","text":"Texto digital util.","region":{"page_index":0,"rect_pdf_points":[0.0,0.0,100.0,20.0],"page_rotation_degrees":0,"source_to_page_transform":[1.0,0.0,0.0,1.0,0.0,0.0],"confidence":1.0},"confidence":1.0}]},"language":"es","requested_unit":"paragraph","route":"direct_text","adapter_status":"completed","raster_content_detected":true}}"#)
+        .expect("mixed digital and raster content should request OCR");
+    let result = serde_json::to_value(event.result).expect("result must serialize");
+
+    assert_eq!(result["record"]["route"], "ocr");
+    assert_eq!(result["record"]["reason_code"], "raster_content_detected");
+}
+
+#[test]
 fn preserves_low_confidence_content_but_routes_it_to_ocr() {
     let event = handle_request(br#"{"schema_version":1,"request_id":"req_low_confidence","command":"normalize_page","payload":{"page":{"document_fingerprint":"abc123","generation_id":"generation_abc123","page_index":0,"blocks":[{"block_id":"page-0-block-0","text":"trazo incierto","region":{"page_index":0,"rect_pdf_points":[0.0,0.0,100.0,20.0],"page_rotation_degrees":0,"source_to_page_transform":[1.0,0.0,0.0,1.0,0.0,0.0],"confidence":0.4},"confidence":0.4}]},"language":"es","requested_unit":"paragraph","route":"direct_text","adapter_status":"completed"}}"#)
         .expect("uncertain content should remain represented");

@@ -18,13 +18,25 @@ que trata o projeto ou como compilá-lo, isso está no [`README`](README.md).
 ## 1. Abrindo o seu primeiro documento
 
 Pressione **⌘O** (ou o botão "Abrir" que aparece ao iniciar o aplicativo) e escolha qualquer PDF do
-seu computador. O aplicativo lembra automaticamente em que página e posição você parou, então na
-próxima vez que abrir o mesmo documento você retoma exatamente de onde ficou.
+seu computador. Enquanto o aplicativo permanece aberto, alternar entre PDF e Imersão preserva a sua
+posição. Se você trocar o idioma da interface e escolher **Reiniciar agora**, o documento será
+reaberto na mesma página e unidade de leitura. Numa abertura normal, abra o PDF com **⌘O**.
 
 Se o PDF for um documento escaneado (fotos de páginas, sem texto selecionável), a Leitura Fluída
 reconhece o texto automaticamente na primeira vez que você o abre. Você verá uma barra de progresso
 enquanto isso acontece; pode começar a ler a primeira página assim que ela estiver pronta, sem
 esperar o documento inteiro terminar.
+
+A preparação é decidida página por página: o aplicativo mantém o texto digital quando ele é útil e
+usa OCR local quando a camada não é confiável. Abra **Detalhes por página** na barra de progresso
+para ver o que está pendente, tentar novamente uma página, **Forçar OCR** ou ignorá-la. **Cancelar**
+interrompe sem perder as páginas prontas e **Retomar** continua depois.
+
+Quando um PDF precisou de OCR, o aplicativo pergunta se você quer guardar o texto reconhecido dentro
+do documento. É opcional: aceitar mantém a aparência e torna o texto pesquisável/selecionável em
+outros aplicativos; escolher **Não guardar** deixa o PDF original intacto.
+
+![Visualização PDF da Leitura Fluída com seletor PDF/Imersão, controles de narração, navegação de página e barra de processamento.](docs/images/reader-pdf.png)
 
 ## 2. O tour guiado
 
@@ -50,6 +62,18 @@ No topo da janela há um seletor **PDF / Imersão** (você também pode alternar
 
 Você pode alternar entre os dois modos a qualquer momento sem perder o seu lugar.
 
+![Detalhe do Modo Imersão com o seletor de visualização e uma unidade de leitura destacada.](docs/images/reader-immersion.png)
+
+### Navegando pelo documento
+
+- O botão da barra lateral (ou **⌘⌥L**) mostra o índice detectado; escolher uma entrada abre a sua
+  página. Sem estrutura confiável, o aplicativo informa isso em vez de inventar títulos.
+- No Modo PDF, **← / →** e as setas ao lado do número avançam ou voltam páginas.
+- Em **⋯ Mais**, gire a página atual para a esquerda (**⌘[**) ou direita (**⌘]**). O aplicativo
+  prepara a página novamente para alinhar leitura, OCR e destaque à nova orientação.
+- Na Imersão, clique duas vezes numa unidade para começar ali. A rolagem manual suspende o
+  acompanhamento; use **Retomar acompanhamento automático** para recuperá-lo.
+
 ## 4. Ouvindo enquanto lê
 
 Os controles de reprodução ficam sempre visíveis no topo da janela:
@@ -71,23 +95,36 @@ voz (isso pode levar alguns minutos, dependendo da sua conexão). Depois de baix
 pedida de novo — fica pronta para todos os seus documentos futuros. Você pode trocar de voz ou de
 idioma de leitura a qualquer momento em **⋯ Mais → Voz**.
 
+A folha **Voz** permite escolher a pasta de modelos, revisar procedência/licença, baixar, cancelar ou
+tentar novamente e selecionar idioma e voz depois da verificação. Se a narração falhar num trecho,
+**⋯ Mais** oferece **Tentar novamente este trecho** e **Ignorar este trecho**; ignorar nunca apaga
+texto nem altera o PDF.
+
 ## 5. Traduzindo um documento
 
-Em **⋯ Mais → Traduzir**, você pode ativar a tradução do seu documento (hoje, entre espanhol,
-inglês e português). Assim como com a voz, o modelo de tradução é baixado na primeira vez; depois
-disso funciona offline.
+Em **⋯ Mais → Traduzir**, escolha a pasta de modelos, baixe e verifique o modelo se necessário,
+selecione o idioma de destino e pressione **Iniciar tradução**. Download e tradução podem ser
+cancelados e repetidos. As direções disponíveis são entre espanhol, inglês e português.
 
-Uma vez ativada, o menu **⋯ Mais** mostra um seletor **Original / Tradução** para escolher qual você
-ouve ou lê. Você pode alternar entre os dois a qualquer momento sem perder o seu lugar — a Leitura
-Fluída mantém o texto original e o traduzido sincronizados entre si.
+O seletor superior **Texto: Original / Tradução** só aparece depois que a tradução começa ou já
+existe. Ele funciona em PDF e Imersão e troca juntos o texto visível e a fonte da narração sem perder
+a unidade atual. Antes disso não ocupa espaço na barra. Para ouvir a tradução, instale também uma voz
+do idioma de destino.
 
 ## 6. Exportando um audiolivro
 
-Se você preferir ouvir o documento fora do aplicativo (no carro, caminhando, sem olhar para uma
-tela), vá em **⋯ Mais → Exportar**. A Leitura Fluída gera um arquivo de áudio (`.m4b`) com
-capítulos, que você pode reproduzir em qualquer player compatível com audiolivros. A exportação pode
-ser pausada e retomada, e se você cancelar no meio do caminho nada fica pela metade: o documento
-original nunca é afetado.
+Se você preferir ouvir fora do aplicativo, vá em **⋯ Mais → Exportar**. A folha informa se exportará
+Original ou Tradução e permite escolher nome, idioma, voz e destino. Antes de iniciar, mostra duração
+e tamanho estimados, espaço disponível, unidades prontas e conteúdo degradado ou omitido.
+
+O resultado é um único `.m4b`: usa capítulos quando encontra títulos confiáveis e uma faixa contínua
+quando não encontra. Exportar pausa a narração ao vivo e pode ser pausado, retomado, cancelado,
+reiniciado ou repetido desde o ponto verificado, inclusive depois de reabrir o aplicativo. Ao
+terminar, abra o audiolivro ou mostre-o no Finder; o aplicativo nunca sobrescreve outro arquivo nem
+altera o PDF.
+
+O audiolivro gerado é o seu arquivo de saída: a licença do programa não se estende a ele. Você pode
+usá-lo ou compartilhá-lo, respeitando sempre os direitos do documento de origem.
 
 ## 7. Trocando o idioma da interface
 
@@ -96,17 +133,34 @@ idioma do seu sistema. O próprio nome do aplicativo também muda conforme o idi
 *Lectura Fluida*, *Fluent Reading* ou *Leitura Fluída*.
 
 Se a troca de idioma exigir reiniciar o aplicativo, você será avisado com clareza e poderá escolher
-fazer isso na hora ou mais tarde, sem perder as suas preferências salvas.
+fazer isso na hora ou mais tarde. Depois de reiniciar, o documento aberto, a página, a unidade de
+leitura, as preferências e qualquer narração ativa serão restaurados.
 
 ## 8. Outros ajustes úteis
 
-Todos estes ficam no menu **⋯ Mais**, no canto superior direito da janela:
+- **Unidade de leitura** (só na Imersão): parágrafo ou frase.
+- **Tema** (só na Imersão): papel, sépia ou escuro.
+- **Armazenamento**: mostra os dados processados do documento aberto e permite apagá-los sem tocar no
+  PDF nem em audiolivros concluídos.
+- **Ajuda da Leitura Fluída**: explica uso, limites e privacidade. **Ajuda → Repetir o tour** inicia o
+  tour guiado novamente.
+- **Sobre a Leitura Fluída** (menu do aplicativo): mostra versão, build, modelos instalados, autoria,
+  procedência, licenças e o `NOTICE` incluído.
 
-- **Unidade de acompanhamento**: escolha se a leitura avança parágrafo por parágrafo ou frase por
-  frase.
-- **Tema do Modo Imersão**: papel (claro), sépia ou escuro — para uma leitura confortável conforme
-  a luz do ambiente.
-- **Armazenamento**: consulte ou libere o espaço usado pelos documentos já processados.
+## Mapa de controles
+
+| Local | Controle | Função e disponibilidade |
+|---|---|---|
+| Barra superior | Índice | Mostra ou oculta a navegação estrutural. |
+| Barra superior | PDF / Imersão | Troca a representação preservando a posição. |
+| Barra superior | Anterior · Reproduzir/Pausar · Seguinte | Controla a unidade narrada. |
+| Barra superior, PDF | Página anterior · número · seguinte | Navega por páginas. |
+| Barra superior, após iniciar tradução | Texto: Original / Tradução | Troca texto e narração nas duas visualizações. |
+| Barra superior | ⋯ Mais | Abre documento, troca visualização, gira, gerencia armazenamento, voz, tradução, exportação, unidade, tema, acompanhamento, ±15 s, velocidade e recuperações do estado atual. |
+| Menu Leitura | Equivalentes de ⋯ Mais | Dá acesso por teclado e VoiceOver a processamento, voz, tradução, exportação, armazenamento, narração, unidade, tema e acompanhamento. |
+| Barra de processamento | Progresso · Detalhes por página · Cancelar/Retomar | Monitora e controla extração, layout e OCR. |
+| Folhas | Voz · Tradução · Exportar · Armazenamento · Ajuda | Configura ou inspeciona cada fluxo sem esconder o documento. |
+| Ajustes (⌘,) | Idioma da interface | Segue o sistema ou fixa português, espanhol ou inglês. |
 
 ## Atalhos de teclado
 
@@ -116,7 +170,15 @@ Todos estes ficam no menu **⋯ Mais**, no canto superior direito da janela:
 | ⌘⇧I | Alternar entre Modo PDF e Modo Imersão |
 | Espaço | Reproduzir / pausar a narração |
 | ← / → | Página anterior / seguinte (no Modo PDF) |
+| ⌥← / ⌥→ | Voltar / avançar 15 segundos |
 | ⌘⌥L | Mostrar ou ocultar o índice de navegação |
+| ⌘[ / ⌘] | Girar a página atual para a esquerda / direita |
+| ⌘⇧V | Abrir Voz |
+| ⌘⌥T | Abrir Tradução |
+| ⌘⇧E | Abrir Exportar áudio |
+| ⌘⌥S | Abrir Armazenamento |
+| ⌘⇧R / ⌘⇧T | Retomar / tentar novamente o processamento |
+| ⌘⇧F | Retomar acompanhamento automático (Imersão) |
 | ⌘, | Abrir Ajustes |
 | ⌘? | Abrir a ajuda |
 | Esc | Cancelar o processamento em andamento |
@@ -143,3 +205,8 @@ funciona com o VoiceOver.
 **Onde ficam guardados os modelos de voz e tradução?**
 Onde você escolher — pode ser o seu Mac ou um disco externo. O aplicativo nunca impõe uma pasta
 fixa.
+
+**Escolhi uma pasta e aparece “Motor de voz não encontrado”. O que faço?**
+Abra **⋯ Mais → Voz → Escolher pasta de modelos…** e selecione a pasta onde o aplicativo baixou o
+modelo verificado. Escolher uma pasta com apenas pesos soltos ou mover só parte do modelo quebra o
+conjunto; nesse caso, baixe-o novamente na mesma folha.

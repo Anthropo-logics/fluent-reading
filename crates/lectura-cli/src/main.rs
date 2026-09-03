@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::ffi::OsStr;
 use std::fs;
@@ -16,8 +16,8 @@ use lectura_core::{
     TranslationRequest, TranslationResult, TtsSynthesisRequest, TtsSynthesisResult, TtsUnit,
     ValidationArtifacts, ValidationEnvironment, ValidationRun, ValidationRunStatus,
     character_error_rate, espeak_stdin, fingerprint_file, measure_digital_block_order,
-    normalize_digital_document, select_processing_route, sha256_hex, spoken_plan,
-    validate_model_manifest, validate_model_package, validate_model_package_for_runtime,
+    normalize_digital_document, sha256_hex, spoken_plan, validate_model_manifest,
+    validate_model_package, validate_model_package_for_runtime,
 };
 use serde_json::{Value, json};
 
@@ -842,6 +842,19 @@ fn synthesize_tts(request_path: &OsStr) -> ExitCode {
     if let Err(code) = verify_tts_installation(&request) {
         return tts_failure(&code, 65);
     }
+    // Install cancellation before creating the owned work root or starting the worker. Tests — and
+    // real callers — use that root as proof that synthesis has begun; installing the handler after
+    // that point left a window where SIGINT terminated this process directly instead of producing
+    // the promised cancelled event and exit code 130.
+    TTS_CANCELLED.store(false, Ordering::Relaxed);
+    // SAFETY: the handler only performs an atomic store, which is signal-safe.
+    let previous = unsafe {
+        libc::signal(
+            libc::SIGINT,
+            handle_tts_sigint as *const () as libc::sighandler_t,
+        )
+    };
+    let _signal_guard = SignalGuard(previous);
     match synthesize_with_worker(&request) {
         Ok(result) => write_event(
             EventEnvelope {
@@ -967,15 +980,6 @@ fn synthesize_with_worker(request: &TtsSynthesisRequest) -> Result<TtsSynthesisR
         let _ = child.wait();
         return Err("LF_WORKER_IO_FAILED".into());
     }
-    TTS_CANCELLED.store(false, Ordering::Relaxed);
-    // SAFETY: the handler only performs an atomic store, which is signal-safe.
-    let previous = unsafe {
-        libc::signal(
-            libc::SIGINT,
-            handle_tts_sigint as *const () as libc::sighandler_t,
-        )
-    };
-    let _signal_guard = SignalGuard(previous);
     let status = loop {
         if TTS_CANCELLED.load(Ordering::Relaxed) {
             let _ = child.kill();
@@ -1296,23 +1300,70 @@ fn process_pdf(
         Ok(value) => value,
         Err(_) => return process_failure("LF_FILE_NOT_FOUND", 66),
     };
-    let worker_pages = match extract_with_worker(input, language, force_ocr_page, page_limit) {
+    let worker_pages = match extract_with_worker(input, language, &[], page_limit) {
         Ok(pages) => pages,
         Err(code) => return process_failure(&code, 70),
     };
     let generation_id = format!("generation_{}", &fingerprint[..16]);
     let expected = expected_block_texts(input);
+    let direct_pages: Vec<_> = worker_pages
+        .iter()
+        .map(|page| PageExtraction {
+            document_fingerprint: fingerprint.clone(),
+            generation_id: generation_id.clone(),
+            page_index: page.page_index,
+            blocks: page.direct_blocks.clone(),
+        })
+        .collect();
+    let direct_results = normalize_digital_document(&direct_pages, language, requested_unit);
+    let mut direct_results = direct_results;
+    for page in &mut direct_results {
+        if let Some(candidate) = worker_pages
+            .iter()
+            .find(|candidate| candidate.page_index == page.record.page_index)
+        {
+            lectura_core::apply_direct_text_route(
+                page,
+                language,
+                candidate.raster_content_detected,
+            );
+        }
+    }
+    let requested_ocr: BTreeSet<_> = direct_results
+        .iter()
+        .filter(|page| page.record.route == ProcessingRoute::Ocr)
+        .map(|page| page.record.page_index)
+        .chain(force_ocr_page)
+        .collect();
+    let ocr_pages = if requested_ocr.is_empty() {
+        vec![]
+    } else {
+        match extract_with_worker(
+            input,
+            language,
+            &requested_ocr.iter().copied().collect::<Vec<_>>(),
+            page_limit,
+        ) {
+            Ok(pages) => pages,
+            Err(code) => return process_failure(&code, 70),
+        }
+    };
     let selected_blocks: Vec<_> = worker_pages
         .iter()
         .map(|page| {
-            let force = force_ocr_page == Some(page.page_index);
-            let route =
-                select_processing_route(page.direct_blocks.len(), page.ocr_blocks.len(), force);
-            let blocks = if route == ProcessingRoute::Ocr && !page.ocr_blocks.is_empty() {
-                page.ocr_blocks.clone()
+            let route = if requested_ocr.contains(&page.page_index) {
+                ProcessingRoute::Ocr
             } else {
-                page.direct_blocks.clone()
+                ProcessingRoute::DirectText
             };
+            let blocks = ocr_pages
+                .iter()
+                .find(|candidate| candidate.page_index == page.page_index)
+                .filter(|candidate| {
+                    route == ProcessingRoute::Ocr && !candidate.ocr_blocks.is_empty()
+                })
+                .map(|candidate| candidate.ocr_blocks.clone())
+                .unwrap_or_else(|| page.direct_blocks.clone());
             (page.page_index, route, blocks)
         })
         .collect();
@@ -1370,32 +1421,40 @@ fn process_pdf(
             .find(|candidate| candidate.page_index == page.record.page_index)
         {
             let forced = force_ocr_page == Some(candidate.page_index);
-            page.record.route = select_processing_route(
-                candidate.direct_blocks.len(),
-                candidate.ocr_blocks.len(),
-                forced,
-            );
+            page.record.route = if requested_ocr.contains(&candidate.page_index) {
+                ProcessingRoute::Ocr
+            } else {
+                ProcessingRoute::DirectText
+            };
             for unit in &mut page.units {
                 unit.processing_route = page.record.route;
             }
             page.record.reason_code = if forced {
                 "ocr_forced"
-            } else if candidate.direct_blocks.is_empty() {
-                "direct_text_empty"
-            } else if candidate.ocr_blocks.len() > candidate.direct_blocks.len() {
-                "raster_content_detected"
+            } else if page.record.route == ProcessingRoute::Ocr
+                && ocr_pages
+                    .iter()
+                    .find(|ocr| ocr.page_index == candidate.page_index)
+                    .is_none_or(|ocr| ocr.ocr_blocks.is_empty())
+            {
+                "ocr_insufficient"
+            } else if page.record.route == ProcessingRoute::Ocr {
+                "ocr_completed"
             } else {
                 "direct_text_useful"
             }
             .into();
             if page.record.route == ProcessingRoute::Ocr {
-                page.record.elapsed_ms = candidate.ocr_elapsed_ms;
+                let ocr = ocr_pages
+                    .iter()
+                    .find(|ocr| ocr.page_index == candidate.page_index);
+                page.record.elapsed_ms = ocr.map_or(0, |ocr| ocr.ocr_elapsed_ms);
                 page.record.processor_revision = "vision-v1".into();
-                if candidate.ocr_status.as_deref() == Some("degraded") {
+                if ocr.and_then(|ocr| ocr.ocr_status.as_deref()) == Some("degraded") {
                     page.record.status = lectura_core::PageProcessingStatus::Degraded;
                 }
                 if page.units.is_empty() {
-                    page.record.error_code = candidate.ocr_error_code.clone();
+                    page.record.error_code = ocr.and_then(|ocr| ocr.ocr_error_code.clone());
                 }
             }
         }
@@ -1427,6 +1486,7 @@ fn process_pdf(
 struct WorkerPage {
     page_index: u32,
     direct_blocks: Vec<ExtractedBlock>,
+    raster_content_detected: bool,
     ocr_blocks: Vec<ExtractedBlock>,
     ocr_status: Option<String>,
     ocr_error_code: Option<String>,
@@ -1436,7 +1496,7 @@ struct WorkerPage {
 fn extract_with_worker(
     input: &Path,
     language: &str,
-    force_ocr_page: Option<u32>,
+    ocr_pages: &[u32],
     page_limit: Option<u32>,
 ) -> Result<Vec<WorkerPage>, String> {
     let worker = worker_path().ok_or_else(|| "LF_WORKER_NOT_FOUND".to_owned())?;
@@ -1450,7 +1510,7 @@ fn extract_with_worker(
         "payload": {
             "path": input,
             "language": language,
-            "force_ocr_pages": force_ocr_page.into_iter().collect::<Vec<_>>(),
+            "force_ocr_pages": ocr_pages,
             "page_limit": page_limit
         }
     });
@@ -1496,6 +1556,7 @@ fn extract_with_worker(
                     .ok_or_else(|| "LF_WORKER_PROTOCOL_INVALID".to_owned())?,
                 direct_blocks: serde_json::from_value(page["direct_blocks"].clone())
                     .map_err(|_| "LF_WORKER_PROTOCOL_INVALID".to_owned())?,
+                raster_content_detected: page["raster_content_detected"].as_bool().unwrap_or(false),
                 ocr_blocks: serde_json::from_value(page["ocr_blocks"].clone())
                     .map_err(|_| "LF_WORKER_PROTOCOL_INVALID".to_owned())?,
                 ocr_status: page["ocr_status"].as_str().map(str::to_owned),
@@ -1689,6 +1750,28 @@ fn write_event(event: EventEnvelope, exit: ExitCode) -> ExitCode {
         Err(_) => {
             eprintln!("lectura: result serialization failed");
             ExitCode::from(70)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cli_event;
+
+    #[test]
+    fn cli_event_preserves_public_identifier_contract() {
+        for (command, request_id, job_id) in [
+            ("gate_a_run", "req_cli_gate_a_run", "job_cli_gate_a_run"),
+            ("translate", "req_cli_translate", "job_cli_translate"),
+            (
+                "tts_synthesize",
+                "req_cli_tts_synthesize",
+                "job_cli_tts_synthesize",
+            ),
+        ] {
+            let event = cli_event(command, "cancelled", None);
+            assert_eq!(event.request_id, request_id);
+            assert_eq!(event.job_id, job_id);
         }
     }
 }

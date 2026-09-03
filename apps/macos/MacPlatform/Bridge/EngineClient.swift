@@ -241,6 +241,7 @@ public enum EngineClient {
         "requested_unit": requestedUnit,
         "route": route,
         "adapter_status": page.status,
+        "raster_content_detected": page.rasterContentDetected ?? false,
       ],
     ]
     return try invoke(JSONSerialization.data(withJSONObject: request, options: [.sortedKeys]))

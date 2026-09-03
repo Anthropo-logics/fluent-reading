@@ -7,6 +7,29 @@ La versión que muestra el panel «Acerca de» sale de `MARKETING_VERSION` y
 `CURRENT_PROJECT_VERSION` del proyecto de Xcode. Al preparar una versión hay que subir ambos y
 añadir aquí su sección.
 
+## [0.5.0] — 2026-09-03 (build 6)
+
+### Añadido
+
+- Las vistas PDF e Inmersión permiten volver al texto original y regresar a la traducción sin
+  perder la posición; el conmutador aparece únicamente cuando la traducción ha comenzado.
+- El README y los manuales en español, inglés y portugués documentan las funciones actuales, y el
+  icono adopta la silueta redondeada habitual de macOS sin cambiar su concepto visual.
+
+### Corregido
+
+- La recomposición estructural de PDF y OCR ordena títulos, capitulares, columnas y párrafos por su
+  posición visual, y reconcilia glifos dañados sin aplicar excepciones ligadas a un documento.
+- La narración conserva frases completas en párrafos largos, resuelve los datos fonéticos desde el
+  motor seleccionado y cancela de forma determinista los procesos de síntesis.
+- La aplicación y el CLI comparten la misma política de decisión para texto digital, OCR y layout,
+  evitando rutas divergentes ante páginas mixtas o de evidencia insuficiente.
+
+### Calidad
+
+- Se reforzaron los límites de concurrencia, memoria y procesos, las comprobaciones de cierre SDC y
+  la CI macOS autoservida, sin introducir servicios remotos ni telemetría.
+
 ## [0.4.1] — 2026-08-27 (build 5)
 
 ### Corregido
@@ -48,8 +71,8 @@ añadir aquí su sección.
   automática; los años, cifras y numerales relevantes del cuerpo permanecen audibles.
 - Las entradas numeradas de tablas de contenido conservan sus títulos y orden; los puntos guía y el
   folio final no se narran.
-- El gate de macOS serializa tests de modelo y UI para evitar que Xcode mate el runner por presión de
-  recursos.
+- La verificación de macOS serializa las pruebas de modelo e interfaz para evitar que Xcode cierre el
+  proceso por presión de recursos.
 
 ## [0.2.0] — 2026-08-24 (build 2)
 

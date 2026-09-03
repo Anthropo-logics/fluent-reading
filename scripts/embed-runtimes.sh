@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # Copies the local inference engines into the app bundle and re-signs them.
 #
 # The App Sandbox lets the app read an external models folder but never lets it execute binaries
@@ -8,95 +8,70 @@ set -euo pipefail
 
 app="${1:?usage: embed-runtimes.sh <path to LecturaFluida.app> [models root]}"
 models_root="${2:-${LECTURA_MODEL_ROOT:-/Volumes/Extreme SSD/LecturaFluida-Models}}"
-project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+project_root="$(cd "$(/usr/bin/dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+manifest="$project_root/models/manifests/embedded-runtimes-v1.json"
+espeak_root="/opt/homebrew/Cellar/espeak-ng/1.52.0"
+pcaudio_root="/opt/homebrew/Cellar/pcaudiolib/1.3"
 helpers="$app/Contents/Helpers"
-mkdir -p "$helpers"
-
-embed() {
-  local source="$1" name="$2"
-  if [[ ! -x "$source" ]]; then
-    echo "embed-runtimes: skipping $name (not built at $source)" >&2
-    return 0
-  fi
-  cp -f "$source" "$helpers/$name"
-  chmod +x "$helpers/$name"
-  # MLX resolves its Metal shader library (default.metallib) from resource bundles sitting next to
-  # the executable. Copying the binary alone makes every run die with "Failed to load the default
-  # metallib", so the sibling .bundle directories travel with it.
-  local build_dir
-  build_dir="$(dirname "$source")"
-  shopt -s nullglob
-  for resource in "$build_dir"/*.bundle; do
-    rm -rf "$helpers/$(basename "$resource")"
-    cp -R "$resource" "$helpers/"
-    # Every nested bundle needs its own signature, otherwise sealing the app fails with
-    # "code object is not signed at all" and macOS refuses to launch it.
-    codesign --force --sign - --timestamp=none "$helpers/$(basename "$resource")" >/dev/null
-    echo "embed-runtimes: embedded resource $(basename "$resource")"
-  done
-  shopt -u nullglob
-  codesign --force --sign - --timestamp=none "$helpers/$name" >/dev/null
-  echo "embed-runtimes: embedded $name"
+[[ -d "$app" && ! -L "$app" && -d "$app/Contents" ]] || {
+  printf 'embed-runtimes: invalid app bundle\n' >&2
+  exit 1
 }
+if [[ "${LECTURA_EMBED_OUTER_SIGNING:-script}" != "xcode" ]]; then
+  "$project_root/scripts/sign-release-app.sh" "$app" preflight
+fi
 
-embed \
-  "$models_root/runtime/xcode-derived-mlx-audio-swift-v0.1.3/Build/Products/Release/mlx-audio-swift-tts" \
-  "mlx-audio-swift-tts"
-embed \
-  "$models_root/runtime/xcode-derived-mlx-swift-lm-gemma3/Build/Products/Release/lectura-translate-runtime" \
-  "lectura-translate-runtime"
-
-embed_espeak() {
-  local binary
-  binary="$(command -v espeak-ng || true)"
-  if [[ -z "$binary" ]]; then
-    echo "embed-runtimes: skipping espeak-ng (not installed)" >&2
-    return 0
+invalid_marker="$app/Contents/.lectura-release-invalid"
+runtime_stage_root="$(/usr/bin/mktemp -d /private/tmp/lectura-runtime-stage.XXXXXX)"
+cleanup() {
+  status=$?
+  /bin/rm -rf -- "$runtime_stage_root"
+  if [[ "$status" -ne 0 && -d "$app/Contents" ]]; then
+    printf 'Runtime embedding or final signature failed. Do not publish this candidate.\n' \
+      > "$invalid_marker"
   fi
-  binary="$(python3 -c "import os,sys;print(os.path.realpath(sys.argv[1]))" "$binary")"
-  local prefix
-  prefix="$(dirname "$(dirname "$binary")")"
-
-  # Kokoro's built-in grapheme-to-phoneme conversion drops Spanish numerals and acronyms outright,
-  # so narration must phonemise through eSpeak NG exactly like the validated harness does. The
-  # engine therefore travels with the app, together with its dylibs and its 25 MB dictionary set.
-  cp -f "$binary" "$helpers/espeak-ng"
-  chmod +x "$helpers/espeak-ng"
-  cp -f "$prefix/lib/libespeak-ng.1.dylib" "$helpers/"
-  local pcaudio
-  pcaudio="$(python3 -c "import os;print(os.path.realpath('/opt/homebrew/opt/pcaudiolib/lib/libpcaudio.0.dylib'))" 2>/dev/null || true)"
-  [[ -f "$pcaudio" ]] && cp -f "$pcaudio" "$helpers/libpcaudio.0.dylib"
-
-  # Homebrew paths do not exist on a user's machine; rewrite every install name to the bundle.
-  install_name_tool -change "$prefix/lib/libespeak-ng.1.dylib" \
-    "@executable_path/libespeak-ng.1.dylib" "$helpers/espeak-ng" 2>/dev/null || true
-  install_name_tool -change "/opt/homebrew/opt/espeak-ng/lib/libespeak-ng.1.dylib" \
-    "@executable_path/libespeak-ng.1.dylib" "$helpers/espeak-ng" 2>/dev/null || true
-  install_name_tool -change "/opt/homebrew/opt/pcaudiolib/lib/libpcaudio.0.dylib" \
-    "@executable_path/libpcaudio.0.dylib" "$helpers/espeak-ng" 2>/dev/null || true
-  install_name_tool -id "@executable_path/libespeak-ng.1.dylib" \
-    "$helpers/libespeak-ng.1.dylib" 2>/dev/null || true
-  install_name_tool -change "/opt/homebrew/opt/pcaudiolib/lib/libpcaudio.0.dylib" \
-    "@executable_path/libpcaudio.0.dylib" "$helpers/libespeak-ng.1.dylib" 2>/dev/null || true
-  if [[ -f "$helpers/libpcaudio.0.dylib" ]]; then
-    install_name_tool -id "@executable_path/libpcaudio.0.dylib" \
-      "$helpers/libpcaudio.0.dylib" 2>/dev/null || true
-    codesign --force --sign - --timestamp=none "$helpers/libpcaudio.0.dylib" >/dev/null
-  fi
-
-  # The dictionaries are data, so they belong in Resources. Inside Helpers macOS treats them as
-  # unsigned code objects and refuses to seal the bundle.
-  local resources="$app/Contents/Resources"
-  mkdir -p "$resources"
-  rm -rf "$resources/espeak-ng-data"
-  cp -R "$prefix/share/espeak-ng-data" "$resources/espeak-ng-data"
-
-  codesign --force --sign - --timestamp=none "$helpers/libespeak-ng.1.dylib" >/dev/null
-  codesign --force --sign - --timestamp=none "$helpers/espeak-ng" >/dev/null
-  echo "embed-runtimes: embedded espeak-ng $("$helpers/espeak-ng" --version 2>/dev/null | head -1 | awk '{print $4}')"
 }
+trap cleanup EXIT
+printf 'Runtime verification in progress. Do not publish this candidate.\n' > "$invalid_marker"
 
-embed_espeak
+"$project_root/scripts/verify-runtime-manifest.sh" \
+  "$manifest" "$models_root" "$espeak_root" "$pcaudio_root" "$runtime_stage_root/payload"
+
+index=0
+while bundled_path="$(/usr/bin/plutil -extract "components.$index.bundled_path" raw "$manifest" 2>/dev/null)"; do
+  /bin/rm -rf -- "$app/Contents/$bundled_path"
+  index=$((index + 1))
+done
+/bin/mkdir -p "$helpers" "$app/Contents/Resources"
+/bin/cp -R "$runtime_stage_root/payload/Helpers/." "$helpers/"
+/bin/cp -R "$runtime_stage_root/payload/Resources/." "$app/Contents/Resources/"
+/bin/cp "$manifest" "$app/Contents/Resources/embedded-runtimes-v1.json"
+/bin/chmod +x "$helpers/mlx-audio-swift-tts" "$helpers/lectura-translate-runtime" \
+  "$helpers/espeak-ng"
+
+# Homebrew paths do not exist on a user's machine; rewrite every install name before signing.
+/usr/bin/install_name_tool -change "$espeak_root/lib/libespeak-ng.1.dylib" \
+  "@executable_path/libespeak-ng.1.dylib" "$helpers/espeak-ng"
+/usr/bin/install_name_tool -change "/opt/homebrew/opt/pcaudiolib/lib/libpcaudio.0.dylib" \
+  "@executable_path/libpcaudio.0.dylib" "$helpers/espeak-ng"
+/usr/bin/install_name_tool -id "@executable_path/libespeak-ng.1.dylib" \
+  "$helpers/libespeak-ng.1.dylib"
+/usr/bin/install_name_tool -change "/opt/homebrew/opt/pcaudiolib/lib/libpcaudio.0.dylib" \
+  "@executable_path/libpcaudio.0.dylib" "$helpers/libespeak-ng.1.dylib"
+/usr/bin/install_name_tool -id "@executable_path/libpcaudio.0.dylib" \
+  "$helpers/libpcaudio.0.dylib"
+
+# Sign from the innermost code out; the final app gate validates the effective policy.
+for nested in \
+  "$helpers/libpcaudio.0.dylib" \
+  "$helpers/libespeak-ng.1.dylib" \
+  "$helpers"/*.bundle \
+  "$helpers/espeak-ng" \
+  "$helpers/mlx-audio-swift-tts" \
+  "$helpers/lectura-translate-runtime"; do
+  "$project_root/scripts/sign-release-app.sh" "$nested" nested
+done
+printf 'embed-runtimes: embedded 11 attested runtime components\n'
 
 layout_default="/Volumes/Extreme SSD/Lectura-Fluida/research/ocr-benchmarks/coreml/PPDocLayoutV3-fp32.mlmodelc"
 if [[ -n "${LECTURA_LAYOUT_MODEL_SOURCE+x}" ]]; then
@@ -110,25 +85,10 @@ else
   echo "embed-runtimes: skipping PPDocLayoutV3-fp32.mlmodelc (default model absent)" >&2
 fi
 
-# The bundle seal must be refreshed after adding helpers, or macOS rejects the modified app.
-#
-# This used to be `codesign --entitlements /dev/null ... || codesign --force --sign - "$app"`: the
-# first form always fails (codesign rejects /dev/null as entitlement data, verified empirically —
-# it is not a machine-specific fluke), so the `||` fallback ran on every single invocation and
-# re-signed the bundle with no entitlements at all. Every app assembled by this script therefore ran
-# without the App Sandbox, silently — `re-signed $app` printed as if it had worked. Sign with the
-# real entitlements instead, and let a failure stop the script rather than hide it.
-#
-# `--options runtime` (Hardened Runtime) was tried here too, for future notarization, and reverted:
-# a Debug build's own LecturaFluida.debug.dylib sits loose in Contents/MacOS, signed once by Xcode at
-# build time with its own ad-hoc identity. Nothing short of re-signing every nested Mach-O with the
-# exact same pass keeps Hardened Runtime's library validation happy about that dylib's identity not
-# matching the app that loads it, and `--deep` does not reach a loose sibling file the way it reaches
-# a real Frameworks/PlugIns bundle — verified: the app failed to launch outright ("different Team
-# IDs") with --options runtime, deep or not, and launched fine without it. Ad-hoc signing has no real
-# Team ID to match in the first place; Hardened Runtime here needs actual Developer ID signing, which
-# this project does not yet have. The vulnerability this fixes is the sandbox being stripped, not the
-# absence of Hardened Runtime — add --options runtime back once Developer ID signing exists.
-codesign --force --sign - \
-  --entitlements "$project_root/apps/macos/Config/LecturaFluida.entitlements" "$app" >/dev/null
-echo "embed-runtimes: re-signed $app"
+/bin/rm -f -- "$invalid_marker"
+if [[ "${LECTURA_EMBED_OUTER_SIGNING:-script}" == "xcode" ]]; then
+  echo "embed-runtimes: verified nested code; outer app signing delegated to Xcode"
+else
+  "$project_root/scripts/sign-release-app.sh" "$app" app
+  echo "embed-runtimes: verified and re-signed $app"
+fi

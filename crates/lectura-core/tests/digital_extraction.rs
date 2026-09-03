@@ -2,7 +2,6 @@ use lectura_core::{
     ContentClass, ExtractedBlock, LayoutRole, NarrationDisposition, PageExtraction,
     PageProcessingStatus, ProcessingRoute, RequestedUnit, SourceRegion, character_error_rate,
     measure_digital_block_order, normalize_digital_document, normalize_digital_page,
-    select_processing_route,
 };
 
 /// An upright page. The rotation used to say 90 here while every rectangle below was laid out as
@@ -111,6 +110,93 @@ fn layout_order_wins_for_a_covered_page_and_orders_geometry_within_one_region() 
             .iter()
             .any(|decision| decision.rule == "ml_layout_order")
     }));
+}
+
+#[test]
+fn layout_region_recomposes_multiline_passages_and_places_a_drop_cap_first() {
+    let normalized = normalize_digital_page(
+        &layout_page(vec![
+            layout_block(
+                "right",
+                "Texto de la columna derecha.",
+                [310.0, 570.0, 220.0, 11.0],
+                Some(LayoutRole::Text),
+                Some(0.9),
+                Some(3),
+            ),
+            layout_block(
+                "body-2",
+                "sintonizarlo con los procesos de apertura e",
+                [100.0, 550.0, 190.0, 10.0],
+                Some(LayoutRole::Text),
+                Some(0.9),
+                Some(1),
+            ),
+            layout_block(
+                "title-2",
+                "Bienestar Familiar, ICBF:",
+                [250.0, 610.0, 240.0, 18.0],
+                Some(LayoutRole::DocumentTitle),
+                Some(0.9),
+                Some(0),
+            ),
+            layout_block(
+                "drop-cap",
+                "L",
+                [58.0, 535.0, 34.0, 42.0],
+                Some(LayoutRole::Text),
+                Some(0.9),
+                Some(1),
+            ),
+            layout_block(
+                "body-1",
+                "a necesidad de reformar el Estado para",
+                [100.0, 565.0, 190.0, 10.0],
+                Some(LayoutRole::Text),
+                Some(0.9),
+                Some(1),
+            ),
+            layout_block(
+                "title-1",
+                "El Instituto Colombiano de",
+                [250.0, 635.0, 240.0, 18.0],
+                Some(LayoutRole::DocumentTitle),
+                Some(0.9),
+                Some(0),
+            ),
+            layout_block(
+                "body-3",
+                "internacionalización de nuestras economías, ha provocado la intro-",
+                [100.0, 535.0, 190.0, 10.0],
+                Some(LayoutRole::Text),
+                Some(0.9),
+                Some(1),
+            ),
+            layout_block(
+                "body-4",
+                "ducción de elementos modernos de administración,",
+                [60.0, 520.0, 230.0, 10.0],
+                Some(LayoutRole::Text),
+                Some(0.9),
+                Some(2),
+            ),
+        ]),
+        "es",
+        RequestedUnit::Paragraph,
+    );
+
+    assert_eq!(
+        normalized
+            .units
+            .iter()
+            .map(|unit| unit.text.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "El Instituto Colombiano de Bienestar Familiar, ICBF:",
+            "La necesidad de reformar el Estado para sintonizarlo con los procesos de apertura e internacionalización de nuestras economías, ha provocado la introducción de elementos modernos de administración,",
+            "Texto de la columna derecha.",
+        ]
+    );
 }
 
 #[test]
@@ -267,7 +353,8 @@ fn layout_never_folio_is_not_absorbed_into_adjacent_automatic_text() {
 fn layout_on_demand_roles_keep_their_safe_content_classes() {
     let cases = [
         (LayoutRole::Table, ContentClass::Table),
-        (LayoutRole::Formula, ContentClass::Formula),
+        (LayoutRole::Chart, ContentClass::Chart),
+        (LayoutRole::Algorithm, ContentClass::Unsupported),
         (LayoutRole::Image, ContentClass::Unsupported),
         (LayoutRole::ReferenceContent, ContentClass::Unsupported),
     ];
@@ -297,6 +384,117 @@ fn layout_on_demand_roles_keep_their_safe_content_classes() {
                 .any(|decision| decision.rule == "layout_policy_on_demand")
         );
     }
+}
+
+#[test]
+fn false_formula_roles_in_multiple_regions_fall_back_to_audible_prose() {
+    let normalized = normalize_digital_page(
+        &layout_page(vec![
+            layout_block(
+                "paragraph-a",
+                "Despite their interdependency, the issues remain separate.",
+                [20.0, 600.0, 420.0, 12.0],
+                Some(LayoutRole::Formula),
+                Some(0.92),
+                Some(0),
+            ),
+            layout_block(
+                "paragraph-b",
+                "The contribution contract was created in 1979.",
+                [20.0, 570.0, 420.0, 12.0],
+                Some(LayoutRole::Formula),
+                Some(0.91),
+                Some(1),
+            ),
+        ]),
+        "en",
+        RequestedUnit::Paragraph,
+    );
+
+    assert_eq!(normalized.units.len(), 2);
+    assert!(
+        normalized.units.iter().all(|unit| {
+            unit.content_class == ContentClass::Prose
+                && unit.narration_disposition.is_none()
+                && unit
+                    .decision_trace
+                    .iter()
+                    .any(|decision| decision.rule == "formula_support_paused")
+        }),
+        "{:#?}",
+        normalized.units
+    );
+}
+
+#[test]
+fn paused_formula_support_keeps_math_visible_and_audible_as_prose() {
+    let page = PageExtraction {
+        document_fingerprint: "sha256:formula-evidence".into(),
+        generation_id: "generation-1".into(),
+        page_index: 0,
+        blocks: vec![
+            placed_block(
+                "url",
+                "See https://example.test/search?q=a=b for details.",
+                placed(20.0, 700.0, 400.0, 12.0),
+            ),
+            placed_block(
+                "dimension",
+                "The room measures 10 × 20 cm.",
+                placed(20.0, 660.0, 400.0, 12.0),
+            ),
+            placed_block("formula", "x = √y", placed(20.0, 620.0, 120.0, 12.0)),
+        ],
+    };
+
+    let normalized = normalize_digital_page(&page, "en", RequestedUnit::Paragraph);
+    assert_eq!(
+        normalized.units[0].content_class,
+        ContentClass::Prose,
+        "{:#?}",
+        normalized.units
+    );
+    assert_eq!(
+        normalized.units[1].content_class,
+        ContentClass::Prose,
+        "{:#?}",
+        normalized.units
+    );
+    assert_eq!(
+        normalized.units[2].content_class,
+        ContentClass::Prose,
+        "{:#?}",
+        normalized.units
+    );
+    assert_eq!(normalized.units[2].text, "x = √y");
+    assert_eq!(normalized.units[2].spoken_text, "x = √y");
+}
+
+#[test]
+fn paused_formula_support_abstains_even_when_layout_calls_math_a_formula() {
+    let normalized = normalize_digital_page(
+        &layout_page(vec![layout_block(
+            "equation",
+            "x = √y",
+            [20.0, 600.0, 180.0, 12.0],
+            Some(LayoutRole::Formula),
+            Some(0.99),
+            Some(0),
+        )]),
+        "en",
+        RequestedUnit::Paragraph,
+    );
+
+    let unit = &normalized.units[0];
+    assert_eq!(unit.content_class, ContentClass::Prose);
+    assert_eq!(unit.text, "x = √y");
+    assert_eq!(unit.spoken_text, "x = √y");
+    assert!(unit.narration_disposition.is_none());
+    assert!(
+        unit.decision_trace
+            .iter()
+            .any(|decision| decision.rule == "formula_support_paused")
+    );
 }
 
 #[test]
@@ -796,6 +994,8 @@ fn normalization_traces_hyphen_join_and_empty_pages_fail_locally() {
         RequestedUnit::Paragraph,
     );
     assert_eq!(empty.record.status, PageProcessingStatus::Failed);
+    assert_eq!(empty.record.route, ProcessingRoute::Ocr);
+    assert_eq!(empty.record.reason_code, "direct_text_insufficient");
     assert_eq!(
         empty.record.error_code.as_deref(),
         Some("LF_PDF_PAGE_NO_TEXT")
@@ -826,14 +1026,36 @@ fn normalization_traces_hyphen_join_and_empty_pages_fail_locally() {
 }
 
 #[test]
-fn route_selection_is_explicit_and_forceable() {
-    assert_eq!(
-        select_processing_route(2, 1, false),
-        ProcessingRoute::DirectText
-    );
-    assert_eq!(select_processing_route(0, 0, false), ProcessingRoute::Ocr);
-    assert_eq!(select_processing_route(1, 2, false), ProcessingRoute::Ocr);
-    assert_eq!(select_processing_route(2, 0, true), ProcessingRoute::Ocr);
+fn digital_normalization_exposes_the_shared_route_policy() {
+    let broken = "Uif mjtufofs dboopu sfbe uijt qbttbhf cfdbvtf fwfsz dibsbdufs ibt cffo tijgufe. "
+        .repeat(8);
+    let page = PageExtraction {
+        document_fingerprint: "sha256:route-policy".into(),
+        generation_id: "generation-route-policy".into(),
+        page_index: 0,
+        blocks: vec![ExtractedBlock {
+            block_id: "broken-layer".into(),
+            text: broken,
+            spoken_text: None,
+            region: region(10.0),
+            confidence: 1.0,
+            layout_role: None,
+            layout_confidence: None,
+            layout_order: None,
+            narration_disposition: None,
+            physical_page_index: None,
+        }],
+    };
+
+    for language in ["es", "en", "pt"] {
+        let normalized = normalize_digital_page(&page, language, RequestedUnit::Paragraph);
+
+        assert_eq!(normalized.record.route, ProcessingRoute::Ocr, "{language}");
+        assert_eq!(
+            normalized.record.reason_code, "direct_text_degraded_impossible_words",
+            "{language}"
+        );
+    }
 }
 
 #[test]
@@ -892,7 +1114,7 @@ fn complex_and_low_confidence_content_is_never_silent_prose() {
     };
     let result = normalize_digital_page(&page, "es", RequestedUnit::Paragraph);
     assert_eq!(result.record.status, PageProcessingStatus::Degraded);
-    assert_eq!(result.units[0].content_class, ContentClass::Formula);
+    assert_eq!(result.units[0].content_class, ContentClass::Prose);
     assert_eq!(result.units[1].content_class, ContentClass::Unsupported);
     assert_eq!(
         result.units[1].decision_trace[0].rule,
@@ -1359,6 +1581,171 @@ fn a_numbered_footnote_is_kept_on_the_page_but_left_out_of_the_narration() {
 }
 
 #[test]
+fn a_compact_endnote_sequence_is_silent_only() {
+    let page = PageExtraction {
+        document_fingerprint: "sha256:borda-page-7".into(),
+        generation_id: "generation-1".into(),
+        page_index: 6,
+        blocks: vec![
+            placed_block(
+                "line-1",
+                "Until 1979, child protection covered judiciary protection and nutritional care.7 It was",
+                placed(75.0, 700.0, 380.0, 12.0),
+            ),
+            placed_block(
+                "line-2",
+                "the state's obligation to ensure that all children received suffi-",
+                placed(75.0, 680.0, 380.0, 12.0),
+            ),
+            placed_block(
+                "line-3",
+                "cient nutrition. In 1979, child protection was redefined within Colombian domestic law8 as",
+                placed(75.0, 660.0, 205.0, 12.0),
+            ),
+            placed_block(
+                "line-3-marker",
+                "9 this included the right to a name and a nationality,",
+                placed(282.0, 660.0, 173.0, 12.0),
+            ),
+            placed_block(
+                "line-4",
+                "education and medical assistance. The provision became an obligation for the state.10",
+                placed(75.0, 640.0, 380.0, 12.0),
+            ),
+            placed_block(
+                "url",
+                "Source: https://example.test/file.html#section",
+                placed(75.0, 600.0, 380.0, 12.0),
+            ),
+        ],
+    };
+
+    let normalized = normalize_digital_page(&page, "en", RequestedUnit::Paragraph);
+    let visible = normalized
+        .units
+        .iter()
+        .map(|unit| unit.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    let spoken = normalized
+        .units
+        .iter()
+        .map(|unit| unit.spoken_text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    assert!(visible.contains("the state.10"), "{visible}");
+    assert!(visible.contains("care.7"), "{visible}");
+    assert!(visible.contains("law8"), "{visible}");
+    assert!(visible.contains("9 this included"), "{visible}");
+    assert!(visible.contains("1979"), "{visible}");
+    assert!(visible.contains("file.html#section"), "{visible}");
+    assert!(!spoken.contains("care.7"), "{spoken}");
+    assert!(!spoken.contains("law8"), "{spoken}");
+    assert!(!spoken.contains("9 this included"), "{spoken}");
+    assert!(!spoken.contains("state.10"), "{spoken}");
+    assert!(spoken.contains("1979"), "{spoken}");
+    assert!(spoken.contains("file.html#section"), "{spoken}");
+
+    let isolated = PageExtraction {
+        document_fingerprint: "sha256:one-ambiguous-number".into(),
+        generation_id: "generation-1".into(),
+        page_index: 0,
+        blocks: vec![placed_block(
+            "only-line",
+            "La norma7 conserva su número porque no hay una secuencia de llamadas.",
+            placed(75.0, 700.0, 380.0, 12.0),
+        )],
+    };
+    let isolated = normalize_digital_page(&isolated, "es", RequestedUnit::Paragraph);
+    assert!(isolated.units[0].spoken_text.contains("norma7"));
+}
+
+#[test]
+fn an_inline_parenthetical_dash_does_not_break_its_paragraph() {
+    let page = PageExtraction {
+        document_fingerprint: "sha256:borda-page-10".into(),
+        generation_id: "generation-1".into(),
+        page_index: 9,
+        blocks: vec![
+            placed_block(
+                "line-15",
+                "An exceptional administrative contract, the ‘contribution contract’ (con-",
+                placed(68.03, 344.75, 294.80, 11.55),
+            ),
+            placed_block(
+                "line-16",
+                "trato de aportes), links the community mothers to the ICBF. The contribu-",
+                placed(68.03, 331.75, 294.80, 11.55),
+            ),
+            placed_block(
+                "line-17",
+                "tion contract was created in 1979 specifically to ensure the operation of",
+                placed(68.03, 318.75, 294.80, 11.55),
+            ),
+            placed_block(
+                "line-18",
+                "community homes: the law stipulates that the contract cannot be estab-",
+                placed(68.03, 305.75, 294.80, 11.55),
+            ),
+            placed_block(
+                "line-19",
+                "lished and enforced by any other Colombian public institution.20 Only the",
+                placed(68.03, 292.75, 294.80, 11.55),
+            ),
+            placed_block(
+                "line-20",
+                "ICBF, because of the ‘special nature of its service’ ",
+                placed(68.03, 279.75, 201.31, 11.55),
+            ),
+            placed_block(
+                "line-21",
+                "– i.e. child protection ",
+                placed(269.41, 279.75, 88.61, 11.55),
+            ),
+            placed_block("line-22", "–", placed(358.08, 279.75, 4.75, 11.55)),
+            placed_block(
+                "line-23",
+                "can enact this type of contract.21",
+                placed(68.03, 266.75, 130.93, 11.55),
+            ),
+        ],
+    };
+
+    let normalized = normalize_digital_page(&page, "en", RequestedUnit::Paragraph);
+    assert_eq!(normalized.units.len(), 1, "{:#?}", normalized.units);
+    assert!(
+        normalized.units[0]
+            .text
+            .contains("(contrato de aportes), links")
+    );
+    assert!(
+        normalized.units[0]
+            .text
+            .contains("The contribution contract was created")
+    );
+    assert!(normalized.units[0].text.contains("cannot be established"));
+    assert!(
+        normalized.units[0]
+            .text
+            .contains("service’ – i.e. child protection – can enact")
+    );
+}
+
+#[test]
+fn typographic_punctuation_is_not_a_formula_without_mathematical_evidence() {
+    let page = PageExtraction {
+        document_fingerprint: "sha256:punctuation".into(),
+        generation_id: "generation-1".into(),
+        page_index: 0,
+        blocks: vec![placed_block("dash", "–", placed(75.0, 700.0, 5.0, 12.0))],
+    };
+
+    let normalized = normalize_digital_page(&page, "en", RequestedUnit::Paragraph);
+    assert_eq!(normalized.units[0].content_class, ContentClass::Prose);
+}
+
+#[test]
 fn a_dense_footnote_apparatus_can_rise_above_the_bottom_quarter() {
     let page = PageExtraction {
         document_fingerprint: "sha256:dense-notes".into(),
@@ -1820,6 +2207,72 @@ fn a_negative_rotation_means_the_same_quarter_turn() {
         assert_eq!(
             normalized.units[0].text, "Primera línea de la página y la segunda después.",
             "rotation {degrees} must be read as the same quarter turn as 270"
+        );
+    }
+}
+
+#[test]
+fn a_tall_first_line_keeps_its_visual_order_at_every_quarter_turn() {
+    fn source_rect(reading: [f64; 4], rotation: i16) -> [f64; 4] {
+        let [x, y, width, height] = reading;
+        match rotation {
+            90 => [-(y + height), x, height, width],
+            180 => [-(x + width), -(y + height), width, height],
+            270 => [y, -(x + width), height, width],
+            _ => reading,
+        }
+    }
+
+    for rotation in [0, 90, 180, 270] {
+        let block = |id: &str, text: &str, reading: [f64; 4], role, order| {
+            let mut block = layout_block(id, text, reading, role, Some(0.9), Some(order));
+            block.region.rect_pdf_points = source_rect(reading, rotation);
+            block.region.page_rotation_degrees = rotation;
+            block
+        };
+        let normalized = normalize_digital_page(
+            &layout_page(vec![
+                block(
+                    "heading",
+                    "Heading.",
+                    [20.0, 140.0, 200.0, 20.0],
+                    Some(LayoutRole::DocumentTitle),
+                    0,
+                ),
+                block(
+                    "body-third",
+                    "and closes.",
+                    [20.0, 90.0, 200.0, 10.0],
+                    Some(LayoutRole::Text),
+                    1,
+                ),
+                block(
+                    "body-first",
+                    "The opening line is tall",
+                    [20.0, 90.0, 200.0, 40.0],
+                    Some(LayoutRole::Text),
+                    1,
+                ),
+                block(
+                    "body-second",
+                    "continues here",
+                    [20.0, 105.0, 200.0, 10.0],
+                    Some(LayoutRole::Text),
+                    1,
+                ),
+            ]),
+            "en",
+            RequestedUnit::Paragraph,
+        );
+
+        assert_eq!(
+            normalized
+                .units
+                .iter()
+                .flat_map(|unit| unit.source_block_ids.iter().map(String::as_str))
+                .collect::<Vec<_>>(),
+            ["heading", "body-first", "body-second", "body-third"],
+            "rotation {rotation} must order by the visual start of each line"
         );
     }
 }

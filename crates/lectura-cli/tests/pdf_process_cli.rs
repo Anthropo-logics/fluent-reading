@@ -36,6 +36,11 @@ fn pdf_process_uses_real_worker_and_reports_nfr6() {
     assert_eq!(event["kind"], "completed");
     assert_eq!(event["result"]["pages"][0]["record"]["status"], "completed");
     assert_eq!(
+        event["result"]["pages"][0]["record"]["route"],
+        "direct_text"
+    );
+    assert_eq!(event["result"]["pages"][0]["record"]["elapsed_ms"], 0);
+    assert_eq!(
         event["result"]["pages"][0]["units"]
             .as_array()
             .unwrap()

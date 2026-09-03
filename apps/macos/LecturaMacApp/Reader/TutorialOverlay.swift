@@ -160,10 +160,14 @@ final class TutorialAnchorProbeView: NSView {
     NotificationCenter.default.removeObserver(
       self, name: NSWindow.didResizeNotification, object: nil)
     NotificationCenter.default.removeObserver(self, name: NSWindow.didMoveNotification, object: nil)
+    NotificationCenter.default.removeObserver(
+      self, name: NSWindow.didUpdateNotification, object: nil)
     guard let window else { return }
-    // A toolbar item moves when the window is resized without its own frame changing relative to
-    // its superview, so `frameDidChange` alone would miss it.
-    for name in [NSWindow.didResizeNotification, NSWindow.didMoveNotification] {
+    // A toolbar item moves when the window resizes or rearranges its contents without its own frame
+    // changing relative to its superview, so `frameDidChange` alone would miss it.
+    for name in [
+      NSWindow.didResizeNotification, NSWindow.didMoveNotification, NSWindow.didUpdateNotification,
+    ] {
       NotificationCenter.default.addObserver(
         self, selector: #selector(report), name: name, object: window)
     }
@@ -305,6 +309,8 @@ struct TutorialOverlay: View {
     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
     .overlay(alignment: .topLeading) { tip(placement.tip, pointingUp: true) }
     .overlay(alignment: .bottomLeading) { tip(placement.tip, pointingUp: false) }
+    .overlay(alignment: .topLeading) { sideTip(placement.tip, pointingLeading: true) }
+    .overlay(alignment: .topTrailing) { sideTip(placement.tip, pointingLeading: false) }
     .shadow(radius: 16)
     .offset(x: placement.cardFrame.minX, y: placement.cardFrame.minY)
   }
@@ -317,7 +323,7 @@ struct TutorialOverlay: View {
       switch tip {
       case .above(let x): pointingUp ? x : nil
       case .below(let x): pointingUp ? nil : x
-      case .none: nil
+      case .leading, .trailing, .none: nil
       }
     if let offset {
       TutorialTipShape()
@@ -327,6 +333,28 @@ struct TutorialOverlay: View {
         .offset(
           x: offset - Self.tipSize.width / 2,
           y: pointingUp ? -Self.tipSize.height + 1 : Self.tipSize.height - 1
+        )
+        .accessibilityHidden(true)
+    }
+  }
+
+  @ViewBuilder
+  private func sideTip(_ tip: TutorialCalloutPlacement.Tip, pointingLeading: Bool) -> some View {
+    let offset: CGFloat? =
+      switch tip {
+      case .leading(let y): pointingLeading ? y : nil
+      case .trailing(let y): pointingLeading ? nil : y
+      case .above, .below, .none: nil
+      }
+    if let offset {
+      let sideOffset = Self.tipSize.width - Self.tipSize.height / 2 - 1
+      TutorialTipShape()
+        .fill(.regularMaterial)
+        .frame(width: Self.tipSize.width, height: Self.tipSize.height)
+        .rotationEffect(.degrees(pointingLeading ? -90 : 90))
+        .offset(
+          x: pointingLeading ? -sideOffset : sideOffset,
+          y: offset - Self.tipSize.height / 2
         )
         .accessibilityHidden(true)
     }

@@ -1,4 +1,5 @@
 import AppKit
+import MacPlatform
 import SwiftUI
 import os
 
@@ -95,6 +96,7 @@ struct LecturaFluidaApp: App {
           }
           .keyboardShortcut("s", modifiers: [.command, .option])
         }
+        .disabled(!readerSurface.isReading)
         Divider()
         Group {
           Button("narration.rewind") {
@@ -118,8 +120,21 @@ struct LecturaFluidaApp: App {
             }
           }
         }
+        .disabled(!readerSurface.isReading)
         Divider()
         Group {
+          if readerSurface.translationControlsVisible {
+            Menu("translation.text.version") {
+              Button("narration.source.original") {
+                NotificationCenter.default.post(
+                  name: .setReaderVisibleTextVersion, object: "original")
+              }
+              Button("narration.source.translation") {
+                NotificationCenter.default.post(
+                  name: .setReaderVisibleTextVersion, object: "translation")
+              }
+            }
+          }
           Menu("narration.source") {
             Button("narration.source.original") {
               NotificationCenter.default.post(name: .setReaderNarrationSource, object: "original")
@@ -129,6 +144,7 @@ struct LecturaFluidaApp: App {
                 name: .setReaderNarrationSource, object: "translation")
             }
           }
+          .disabled(!readerSurface.isReading)
           Menu("reader.unit") {
             Button("reader.unit.paragraph") {
               NotificationCenter.default.post(name: .setReaderTrackingUnit, object: "paragraph")
@@ -137,7 +153,7 @@ struct LecturaFluidaApp: App {
               NotificationCenter.default.post(name: .setReaderTrackingUnit, object: "sentence")
             }
           }
-          .disabled(readerSurface.surface != .immersion)
+          .disabled(!readerSurface.isReading || readerSurface.surface != .immersion)
           Menu("reader.immersion.theme") {
             // The ⋯ menu labels these from the theme's own raw value, untranslated; the same words
             // appear here rather than inventing a second, different name for the same three themes.
@@ -149,12 +165,14 @@ struct LecturaFluidaApp: App {
               }
             }
           }
-          .disabled(readerSurface.surface != .immersion)
+          .disabled(!readerSurface.isReading || readerSurface.surface != .immersion)
           Button("reader.follow.resume") {
             NotificationCenter.default.post(name: .resumeReaderAutoFollow, object: nil)
           }
           .keyboardShortcut("f", modifiers: [.command, .shift])
-          .disabled(readerSurface.surface != .immersion)
+          .disabled(
+            !readerSurface.isReading || readerSurface.surface != .immersion
+              || readerSurface.autoFollowEnabled)
         }
       }
     }
@@ -171,16 +189,17 @@ struct LecturaFluidaApp: App {
   }
 }
 
-/// Lets the menu bar know which surface is showing, without giving `.commands` a reference to any
-/// particular `ReaderView`'s model — the same reason the other coordinators here exist. Story 6.24
-/// put Immersion-only commands (tracking unit, theme, resume auto-follow) in the menu bar so a
-/// keyboard-only reader could reach them; without this, they stayed enabled and silently did nothing
-/// while PDF Mode was showing, which is worse than not being there for exactly the reader this menu
-/// exists for.
+/// Lets the menu bar know which reader commands have a current target without giving `.commands` a
+/// reference to any particular `ReaderView`'s model. Story 6.24 put document and Immersion actions
+/// in the menu bar for keyboard access; this shared state keeps those actions from staying enabled
+/// when their document, surface or auto-follow target is absent.
 @MainActor
 final class ReaderSurfaceCoordinator: ObservableObject {
   static let shared = ReaderSurfaceCoordinator()
+  @Published var isReading = false
   @Published var surface: ReadingSurface = .pdf
+  @Published var autoFollowEnabled = true
+  @Published var translationControlsVisible = false
 }
 
 @MainActor
@@ -217,6 +236,7 @@ final class DocumentCloseCoordinator {
 final class RestartCoordinator {
   static let shared = RestartCoordinator()
   var restartsAfterTermination = false
+  var launchRequestID: UUID?
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -291,6 +311,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let configuration = NSWorkspace.OpenConfiguration()
     configuration.createsNewApplicationInstance = true
     let bundleURL = Bundle.main.bundleURL
+    let requestID = UUID()
+    RestartCoordinator.shared.launchRequestID = requestID
     // Story 6.19: "Restart now" was reported leaving the reader with no application at all, and
     // with nothing in the log to say at which of the three steps it was lost. Each step says so
     // now: the request, the answer LaunchServices gave, and the process that answered it.
@@ -307,16 +329,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
           "restart: no replacement — \(error as NSError?, privacy: .public); staying alive")
       }
       Task { @MainActor in
-        // If the replacement never came up, staying alive beats quitting into nothing.
-        if !launched { RestartCoordinator.shared.restartsAfterTermination = false }
-        NSApp.reply(toApplicationShouldTerminate: launched)
+        guard RestartCoordinator.shared.launchRequestID == requestID else { return }
+        RestartCoordinator.shared.launchRequestID = nil
+        if launched {
+          RestartCoordinator.shared.restartsAfterTermination = false
+          NSApp.reply(toApplicationShouldTerminate: true)
+        } else {
+          Self.cancelFailedRestart()
+        }
       }
     }
+    Task { @MainActor in
+      try? await Task.sleep(for: .seconds(10))
+      guard RestartCoordinator.shared.launchRequestID == requestID else { return }
+      Self.terminationLog.error("restart: LaunchServices timed out; staying alive")
+      Self.cancelFailedRestart()
+    }
+  }
+
+  @MainActor
+  private static func cancelFailedRestart() {
+    RestartCoordinator.shared.launchRequestID = nil
+    RestartCoordinator.shared.restartsAfterTermination = false
+    LanguageRestartReadingStore.clear()
+    NSApp.reply(toApplicationShouldTerminate: false)
+    let alert = NSAlert()
+    alert.messageText = String(localized: "settings.relaunch.failed.title")
+    alert.informativeText = String(localized: "settings.relaunch.failed.message")
+    alert.addButton(withTitle: String(localized: "settings.relaunch.failed.dismiss"))
+    alert.runModal()
   }
 }
 
 extension Notification.Name {
   static let openReaderDocument = Self("openReaderDocument")
+  static let prepareReaderLanguageRestart = Self("prepareReaderLanguageRestart")
   static let toggleReadingSurface = Self("toggleReadingSurface")
   static let cancelReadingProcessing = Self("cancelReadingProcessing")
   static let resumeReadingProcessing = Self("resumeReadingProcessing")
@@ -334,6 +381,7 @@ extension Notification.Name {
   static let showReaderStorage = Self("showReaderStorage")
   static let seekReaderNarration = Self("seekReaderNarration")
   static let setReaderNarrationRate = Self("setReaderNarrationRate")
+  static let setReaderVisibleTextVersion = Self("setReaderVisibleTextVersion")
   static let setReaderNarrationSource = Self("setReaderNarrationSource")
   static let setReaderTrackingUnit = Self("setReaderTrackingUnit")
   static let setReaderImmersionTheme = Self("setReaderImmersionTheme")

@@ -4,7 +4,7 @@ import PDFKit
 private struct WorkerPayload: Decodable {
   let path: String?
   let language: String?
-  let forceOCRPages: [UInt32]?
+  let forceOcrPages: [UInt32]?
   let pageLimit: UInt32?
   let modelId: String?
   let modelRevision: String?
@@ -17,16 +17,6 @@ private struct WorkerPayload: Decodable {
   let targetLanguage: String?
   let translationUnits: [TranslationUnitRequest]?
 
-  // `.convertFromSnakeCase` turns `force_ocr_pages` into `forceOcrPages` (one capital per word),
-  // not `forceOCRPages` (the acronym fully capitalised, Swift's own naming convention) — the two
-  // never matched, so the field silently decoded to nil and "force OCR" had no effect through this
-  // worker. Every other key here happens to have no internal acronym, so this is the only one that
-  // needs an explicit mapping.
-  private enum CodingKeys: String, CodingKey {
-    case path, language, pageLimit, modelId, modelRevision, runtimeId, runtimeVersion, voiceId,
-      rawIpa, units, sourceLanguage, targetLanguage, translationUnits
-    case forceOCRPages = "force_ocr_pages"
-  }
 }
 
 private struct WorkerRequest: Decodable {
@@ -39,6 +29,7 @@ private struct WorkerRequest: Decodable {
 private struct WorkerPageCandidate: Encodable {
   let pageIndex: UInt32
   let directBlocks: [DigitalTextBlock]
+  let rasterContentDetected: Bool
   let ocrBlocks: [DigitalTextBlock]
   let ocrStatus: String?
   let ocrErrorCode: String?
@@ -123,16 +114,7 @@ private struct LecturaMacWorker {
             await DocumentServices.extractDigitalPage(
               at: URL(fileURLWithPath: path), pageIndex: pageIndex))
         }
-        let forced = Set(request.payload.forceOCRPages ?? [])
-        // ponytail: avoid speculative OCR across very large digital documents; the
-        // incremental scheduler replaces this guard when Story 2.3 owns paging.
-        let ocrIndexes =
-          forced.isEmpty
-          ? Set(
-            directPages.compactMap { page in
-              page.blocks.isEmpty || document.pageCount <= 64 ? Int(page.pageIndex) : nil
-            })
-          : Set(forced.map(Int.init))
+        let ocrIndexes = Set((request.payload.forceOcrPages ?? []).map(Int.init))
         var ocrPages = [(DigitalPageResult, UInt64)]()
         for pageIndex in ocrIndexes.sorted() {
           let started = ContinuousClock.now
@@ -150,9 +132,12 @@ private struct LecturaMacWorker {
         }
         let candidates = directPages.map { direct in
           let ocr = ocrPages.first { $0.0.pageIndex == direct.pageIndex }
+          let repaired =
+            ocr.map { DocumentServices.repairDigitalText(direct, with: $0.0) } ?? direct
           return WorkerPageCandidate(
             pageIndex: direct.pageIndex,
-            directBlocks: direct.blocks,
+            directBlocks: repaired.blocks,
+            rasterContentDetected: direct.rasterContentDetected ?? false,
             ocrBlocks: ocr?.0.blocks ?? [],
             ocrStatus: ocr?.0.status,
             ocrErrorCode: ocr?.0.errorCode,

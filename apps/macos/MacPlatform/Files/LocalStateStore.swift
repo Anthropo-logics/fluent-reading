@@ -11,6 +11,11 @@ public enum LocalStatePreparation: Equatable, Sendable {
   case invalidated
 }
 
+public enum LocalStateUnit: String, Sendable {
+  case paragraph = "pages"
+  case sentence = "sentences"
+}
+
 public enum LocalStateStore {
   @discardableResult
   public static func save(
@@ -49,11 +54,12 @@ public enum LocalStateStore {
     _ page: LFNormalizedPage,
     pageIndex: UInt32,
     documentID: String,
+    unit: LocalStateUnit = .paragraph,
     root: URL? = nil
   ) throws -> URL {
     _ = try prepare(documentID: documentID, root: root)
     let directory = try sessionDirectory(documentID: documentID, root: root)
-      .appendingPathComponent("pages", isDirectory: true)
+      .appendingPathComponent(unit.rawValue, isDirectory: true)
     try FileManager.default.createDirectory(
       at: directory, withIntermediateDirectories: true, attributes: nil)
     let destination = directory.appendingPathComponent("\(pageIndex).json")
@@ -61,6 +67,27 @@ public enum LocalStateStore {
     encoder.outputFormatting = [.sortedKeys]
     try encoder.encode(page).write(to: destination, options: .atomic)
     return destination
+  }
+
+  public static func loadNormalizedPages(
+    documentID: String,
+    unit: LocalStateUnit = .paragraph,
+    root: URL? = nil
+  ) throws -> [UInt32: LFNormalizedPage] {
+    _ = try prepare(documentID: documentID, root: root)
+    let directory = try sessionDirectory(documentID: documentID, root: root)
+      .appendingPathComponent(unit.rawValue, isDirectory: true)
+    guard FileManager.default.fileExists(atPath: directory.path) else { return [:] }
+    return try FileManager.default.contentsOfDirectory(
+      at: directory, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+    ).reduce(into: [:]) { pages, url in
+      guard url.pathExtension == "json",
+        let pageIndex = UInt32(url.deletingPathExtension().lastPathComponent)
+      else { return }
+      guard let page = try? JSONDecoder().decode(LFNormalizedPage.self, from: Data(contentsOf: url))
+      else { return }
+      pages[pageIndex] = page
+    }
   }
 
   public static func prepare(documentID: String, root: URL? = nil) throws

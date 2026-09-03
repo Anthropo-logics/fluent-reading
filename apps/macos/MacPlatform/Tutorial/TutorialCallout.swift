@@ -21,13 +21,17 @@ public enum TutorialAnchorTarget: String, CaseIterable, Sendable {
 /// Where a step's callout goes, expressed in the overlay's own coordinates (top-left origin, y
 /// growing downwards, like SwiftUI) so the view layer can use it without further conversion.
 public struct TutorialCalloutPlacement: Equatable, Sendable {
-  /// Which edge of the card carries the pointer, and where along that edge it sits (measured from
-  /// the card's leading edge, so the view can offset it without knowing the card's position).
+  /// Which edge of the card carries the pointer, and where along that edge it sits (x from the
+  /// leading edge for horizontal edges, y from the top for vertical edges).
   public enum Tip: Equatable, Sendable {
     /// Pointer on the card's top edge: the target is above the card.
     case above(CGFloat)
     /// Pointer on the card's bottom edge: the target is below the card.
     case below(CGFloat)
+    /// Pointer on the card's leading edge: the target is to the left of the card.
+    case leading(CGFloat)
+    /// Pointer on the card's trailing edge: the target is to the right of the card.
+    case trailing(CGFloat)
     /// No pointer — either there is no target, or the card had to be laid over one too large to
     /// stand beside (the highlight carries the meaning in that case).
     case none
@@ -58,7 +62,7 @@ public enum TutorialCallout {
   /// How close to a corner the pointer may get before it stops tracking the target. Measured in a
   /// 720-point window against the ⋯ menu, the far-right control: any more and the pointer stops
   /// short of the button it is supposed to be pointing at once the card is clamped by the margin.
-  public static let tipInset: CGFloat = 18
+  public static let tipInset: CGFloat = 12
 
   /// Converts an AppKit window rectangle (origin at the bottom-left, y growing upwards) into the
   /// overlay's coordinates (origin at its own top-left, y growing downwards).
@@ -120,8 +124,17 @@ public enum TutorialCallout {
       y = clamp(target.midY - height / 2, margin, maxY)
       let beside = target.maxX + gap
       let besideLeading = target.minX - gap - width
-      x = beside <= maxX ? beside : (besideLeading >= margin ? besideLeading : centredX)
-      tip = .none
+      let tipY = clamp(target.midY - y, tipInset, max(tipInset, height - tipInset))
+      if beside <= maxX {
+        x = clamp(beside, margin, maxX)
+        tip = .leading(tipY)
+      } else if besideLeading >= margin {
+        x = clamp(besideLeading, margin, maxX)
+        tip = .trailing(tipY)
+      } else {
+        x = centredX
+        tip = .none
+      }
     }
 
     let overlayBounds = CGRect(origin: .zero, size: overlaySize)

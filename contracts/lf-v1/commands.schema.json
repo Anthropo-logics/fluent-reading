@@ -75,7 +75,8 @@
             "language": { "enum": ["es", "en", "pt"] },
             "requested_unit": { "enum": ["paragraph", "sentence"] },
             "route": { "enum": ["direct_text", "ocr"] },
-            "adapter_status": { "enum": ["completed", "degraded", "failed"] }
+            "adapter_status": { "enum": ["completed", "degraded", "failed"] },
+            "raster_content_detected": { "type": "boolean" }
           },
           "additionalProperties": false
         }

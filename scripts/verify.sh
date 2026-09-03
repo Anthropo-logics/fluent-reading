@@ -15,6 +15,10 @@ xcode_derived_data_args=()
 if [[ -n "${LECTURA_DERIVED_DATA:-}" ]]; then
   xcode_derived_data_args=(-derivedDataPath "$LECTURA_DERIVED_DATA")
 fi
+xcode_test_products_args=()
+if [[ -n "${LECTURA_TEST_PRODUCTS_DIR:-}" ]]; then
+  xcode_test_products_args=(CONFIGURATION_BUILD_DIR="$LECTURA_TEST_PRODUCTS_DIR")
+fi
 
 if [[ -x "$project_root/.cache/rust/cargo/bin/cargo" ]]; then
   export CARGO_HOME="$project_root/.cache/rust/cargo"
@@ -23,7 +27,7 @@ if [[ -x "$project_root/.cache/rust/cargo/bin/cargo" ]]; then
 fi
 
 usage() {
-  printf 'usage: verify.sh <lint|typecheck|test|build|all|gate-a>\n' >&2
+  printf 'usage: verify.sh <lint|typecheck|test|build|all|gate-a|real-runtime|real-first-page>\n' >&2
   exit 64
 }
 
@@ -82,12 +86,46 @@ xcode_build() {
     build
 }
 
+xcode_test() {
+  xcodebuild test \
+    -project apps/macos/LecturaFluida.xcodeproj \
+    -scheme LecturaFluida \
+    -testPlan CI-Fast \
+    "${xcode_derived_data_args[@]+"${xcode_derived_data_args[@]}"}" \
+    -destination 'platform=macOS,arch=arm64' \
+    -parallel-testing-enabled NO \
+    CODE_SIGNING_ALLOWED=YES \
+    CODE_SIGN_IDENTITY=- \
+    SWIFT_TREAT_WARNINGS_AS_ERRORS=YES \
+    "${xcode_test_products_args[@]+"${xcode_test_products_args[@]}"}" \
+    "$@"
+}
+
+require_artifact() {
+  local path="$1"
+  local label="$2"
+  [[ -e "$path" ]] || {
+    printf 'verify: falta %s: %s\n' "$label" "$path" >&2
+    return 1
+  }
+}
+
+require_executable() {
+  local path="$1"
+  local label="$2"
+  [[ -x "$path" ]] || {
+    printf 'verify: falta el ejecutable %s: %s\n' "$label" "$path" >&2
+    return 1
+  }
+}
+
 run_lint() {
   cargo fmt --all -- --check
   find contracts/lf-v1 apps/macos -type f \( -name '*.json' -o -name '*.xcstrings' -o -name '*.xctestplan' \) \
     -exec jq -e . {} + >/dev/null
   bash -n scripts/bootstrap.sh scripts/build-rust-macos.sh scripts/embed-layout-model.sh \
-    scripts/embed-runtimes.sh scripts/verify.sh tests/integration/ToolingProbe.sh
+    scripts/embed-runtimes.sh scripts/sign-release-app.sh scripts/verify-notarized-app.sh \
+    scripts/verify-runtime-manifest.sh scripts/verify.sh tests/integration/ToolingProbe.sh
   swift format lint --recursive --strict apps/macos tests/integration
 }
 
@@ -107,16 +145,7 @@ run_test() {
   tests/integration/OCRCorpusProcess.sh
   tests/integration/OfflinePDFProcess.sh
   require_xcode
-  xcodebuild test \
-    -project apps/macos/LecturaFluida.xcodeproj \
-    -scheme LecturaFluida \
-    -testPlan CI-Fast \
-    "${xcode_derived_data_args[@]+"${xcode_derived_data_args[@]}"}" \
-    -destination 'platform=macOS,arch=arm64' \
-    -parallel-testing-enabled NO \
-    CODE_SIGNING_ALLOWED=YES \
-    CODE_SIGN_IDENTITY=- \
-    SWIFT_TREAT_WARNINGS_AS_ERRORS=YES
+  xcode_test -only-testing:LecturaMacTests
 }
 
 run_build() {
@@ -134,10 +163,46 @@ run_gate_a() {
   node --test tests/integration/*.test.mjs
 }
 
+run_real_runtime() {
+  local model_root="${LECTURA_MODEL_ROOT:?verify: set LECTURA_MODEL_ROOT}"
+  local pdf="${LECTURA_REAL_PDF:?verify: set LECTURA_REAL_PDF}"
+  require_artifact "$model_root/verified-packages/kokoro-82m-4bit/data" "Kokoro model data"
+  require_executable \
+    "$model_root/runtime/xcode-derived-mlx-audio-swift-v0.1.3/Build/Products/Release/mlx-audio-swift-tts" \
+    "Kokoro release runtime"
+  require_artifact "$pdf" "real PDF"
+  require_executable /opt/homebrew/bin/espeak-ng "eSpeak NG"
+  cargo build --workspace --release --locked
+  ./scripts/build-macos-worker.sh target/lectura-macos-worker
+  require_executable target/release/lectura "release lectura CLI"
+  require_executable target/lectura-macos-worker "macOS worker"
+  require_xcode
+  xcode_test \
+    LECTURA_REAL_RUNTIME_TEST=1 \
+    "LECTURA_MODEL_ROOT=$model_root" \
+    "LECTURA_REAL_PDF=$pdf" \
+    -only-testing:LecturaMacTests/ModelServicesTests/testGateAHarnessUsesSessionHostPdfKitRustPlanAndRealKokoroRuntime \
+    -only-testing:LecturaMacTests/ModelServicesTests/testGateAHarnessUsesVisionOCRAndRealKokoroRuntime \
+    -only-testing:LecturaMacTests/ModelServicesTests/testNarratesTextExtractedFromRealBibliographyPDF
+}
+
+run_real_first_page() {
+  local corpus="${LECTURA_REAL_PDF_CORPUS:?verify: set LECTURA_REAL_PDF_CORPUS}"
+  [[ -d "$corpus" ]] || {
+    printf 'verify: LECTURA_REAL_PDF_CORPUS no es un directorio: %s\n' "$corpus" >&2
+    return 1
+  }
+  require_xcode
+  xcode_test \
+    LECTURA_FIRST_PAGE_PERFORMANCE_TEST=1 \
+    "LECTURA_REAL_PDF_CORPUS=$corpus" \
+    -only-testing:LecturaMacUITests/ReaderWindowUITests/testFirstPageColdAndHotBudgetOnReferenceMac
+}
+
 [[ $# -eq 1 ]] || usage
 gate="$1"
 case "$gate" in
-  lint | typecheck | test | build | all | gate-a) ;;
+  lint | typecheck | test | build | all | gate-a | real-runtime | real-first-page) ;;
   *) usage ;;
 esac
 
@@ -149,6 +214,8 @@ case "$gate" in
   test) run_test ;;
   build) run_build ;;
   gate-a) run_gate_a ;;
+  real-runtime) run_real_runtime ;;
+  real-first-page) run_real_first_page ;;
   all)
     run_lint
     run_typecheck

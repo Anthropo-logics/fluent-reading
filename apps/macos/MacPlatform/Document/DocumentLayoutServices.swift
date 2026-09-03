@@ -204,11 +204,10 @@ public enum DocumentLayoutPostprocessor {
   ]
 
   public static func decode(
-    classLogits: MLMultiArray, boxes: MLMultiArray, orderLogits: MLMultiArray, pageIndex: Int,
-    pageBounds: CGRect, pageRotationDegrees: Int, physicalPageIndex: UInt8, orderOffset: UInt32,
+    classLogits: MLMultiArray, boxes: MLMultiArray, orderLogits: MLMultiArray, pageBounds: CGRect,
+    pageRotationDegrees: Int, physicalPageIndex: UInt8, orderOffset: UInt32,
     regionOfInterest: CGRect = CGRect(x: 0, y: 0, width: 1, height: 1)
   ) -> [DocumentLayoutRegion] {
-    _ = pageIndex
     guard pageBounds.width.isFinite, pageBounds.height.isFinite, pageBounds.width > 0,
       pageBounds.height > 0, isFinite(classLogits), isFinite(boxes), isFinite(orderLogits),
       let classShape = shape(of: classLogits), let boxShape = shape(of: boxes),
@@ -422,7 +421,7 @@ public actor DocumentLayoutClassifier {
   }
 
   public func classify(
-    at page: PDFPage, pageIndex: Int, rotation: Int, modelURL: URL? = nil
+    at page: PDFPage, rotation: Int, modelURL: URL? = nil
   ) async -> DocumentLayoutResult {
     let started = ProcessInfo.processInfo.systemUptime
     func result(_ regions: [DocumentLayoutRegion], _ pages: UInt8, _ status: String)
@@ -443,15 +442,14 @@ public actor DocumentLayoutClassifier {
       let primary = try predict(model, page: page, crop: nil, source: .thumbnail)
       var source = RasterSource.thumbnail
       var regions = DocumentLayoutPostprocessor.decode(
-        classLogits: primary.0, boxes: primary.1, orderLogits: primary.2, pageIndex: pageIndex,
-        pageBounds: bounds, pageRotationDegrees: rotation, physicalPageIndex: 0, orderOffset: 0)
+        classLogits: primary.0, boxes: primary.1, orderLogits: primary.2, pageBounds: bounds,
+        pageRotationDegrees: rotation, physicalPageIndex: 0, orderOffset: 0)
       if regions.isEmpty {
         source = .coreGraphics
         let fallback = try predict(model, page: page, crop: nil, source: source)
         regions = DocumentLayoutPostprocessor.decode(
-          classLogits: fallback.0, boxes: fallback.1, orderLogits: fallback.2,
-          pageIndex: pageIndex, pageBounds: bounds, pageRotationDegrees: rotation,
-          physicalPageIndex: 0, orderOffset: 0)
+          classLogits: fallback.0, boxes: fallback.1, orderLogits: fallback.2, pageBounds: bounds,
+          pageRotationDegrees: rotation, physicalPageIndex: 0, orderOffset: 0)
       }
       guard !regions.isEmpty else { return result([], 1, "degraded") }
       guard
@@ -462,17 +460,16 @@ public actor DocumentLayoutClassifier {
       }
       let left = try predict(model, page: page, crop: 0..<1, source: source)
       let leftRegions = DocumentLayoutPostprocessor.decode(
-        classLogits: left.0, boxes: left.1, orderLogits: left.2, pageIndex: pageIndex,
-        pageBounds: bounds, pageRotationDegrees: rotation, physicalPageIndex: 0, orderOffset: 0,
+        classLogits: left.0, boxes: left.1, orderLogits: left.2, pageBounds: bounds,
+        pageRotationDegrees: rotation, physicalPageIndex: 0, orderOffset: 0,
         regionOfInterest: CGRect(x: 0, y: 0, width: 0.5, height: 1))
       let right = try predict(model, page: page, crop: 1..<2, source: source)
       let offset =
         (leftRegions.map(\.order).max() ?? UInt32.max) == UInt32.max
         ? 0 : (leftRegions.map(\.order).max() ?? 0) + 1
       let rightRegions = DocumentLayoutPostprocessor.decode(
-        classLogits: right.0, boxes: right.1, orderLogits: right.2, pageIndex: pageIndex,
-        pageBounds: bounds, pageRotationDegrees: rotation, physicalPageIndex: 1,
-        orderOffset: offset,
+        classLogits: right.0, boxes: right.1, orderLogits: right.2, pageBounds: bounds,
+        pageRotationDegrees: rotation, physicalPageIndex: 1, orderOffset: offset,
         regionOfInterest: CGRect(x: 0.5, y: 0, width: 0.5, height: 1))
       guard let splitRegions = Self.combinedSpreadRegions(left: leftRegions, right: rightRegions)
       else { return result([], 2, "degraded") }
@@ -498,50 +495,6 @@ public actor DocumentLayoutClassifier {
   ) -> [DocumentLayoutRegion]? {
     guard !left.isEmpty, !right.isEmpty else { return nil }
     return left + right
-  }
-
-  static func spreadPageBounds(pageBounds: CGRect, rotation: Int) -> (
-    left: CGRect, right: CGRect
-  ) {
-    let turn = ((rotation % 360) + 360) % 360
-    switch turn {
-    case 90:
-      return (
-        CGRect(
-          x: pageBounds.minX, y: pageBounds.minY, width: pageBounds.width,
-          height: pageBounds.height / 2),
-        CGRect(
-          x: pageBounds.minX, y: pageBounds.midY, width: pageBounds.width,
-          height: pageBounds.height / 2)
-      )
-    case 180:
-      return (
-        CGRect(
-          x: pageBounds.midX, y: pageBounds.minY, width: pageBounds.width / 2,
-          height: pageBounds.height),
-        CGRect(
-          x: pageBounds.minX, y: pageBounds.minY, width: pageBounds.width / 2,
-          height: pageBounds.height)
-      )
-    case 270:
-      return (
-        CGRect(
-          x: pageBounds.minX, y: pageBounds.midY, width: pageBounds.width,
-          height: pageBounds.height / 2),
-        CGRect(
-          x: pageBounds.minX, y: pageBounds.minY, width: pageBounds.width,
-          height: pageBounds.height / 2)
-      )
-    default:
-      return (
-        CGRect(
-          x: pageBounds.minX, y: pageBounds.minY, width: pageBounds.width / 2,
-          height: pageBounds.height),
-        CGRect(
-          x: pageBounds.midX, y: pageBounds.minY, width: pageBounds.width / 2,
-          height: pageBounds.height)
-      )
-    }
   }
 
   private func predict(

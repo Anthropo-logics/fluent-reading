@@ -2,6 +2,15 @@
 
 **[English](#english)** · [Español](#español) · [Português](#português)
 
+[Download · Descargar · Baixar](../../releases) · [Manual ES](MANUAL.md) ·
+[Manual EN](MANUAL.en.md) · [Manual PT](MANUAL.pt.md) ·
+[Issues](https://github.com/Anthropo-logics/Lectura-fluida/issues)
+
+<p align="center">
+  <img src="docs/images/reader-pdf.png" alt="Fluent Reading in PDF view" width="49%">
+  <img src="docs/images/reader-immersion.png" alt="Fluent Reading in Immersion view" width="49%">
+</p>
+
 ---
 
 ## English
@@ -38,6 +47,28 @@ third-party server standing between you and your own reading.
 That same principle shapes the license: Fluent Reading is free software (GPLv3), so the code is
 there for anyone to read, audit, and improve — see `LICENSE` and `NOTICE`.
 
+### What you can do
+
+- Open digital or scanned PDFs and begin with the first reading unit while nearby pages continue
+  processing.
+- Listen with a local Spanish, English, or Portuguese voice while the active paragraph or sentence
+  stays highlighted.
+- Move between the original PDF and a clean Immersion view without losing your place.
+- Translate locally between Spanish, English, and Portuguese, then switch between the source and the
+  translation in either reading view.
+- Export the original or translated narration as an M4B audiobook and pause or resume a long export.
+
+### Features
+
+| Feature | What it provides |
+|---|---|
+| Layout-aware text extraction and OCR | Chooses embedded text or local OCR page by page, preserves reading order, and lets you retry or force OCR when needed. |
+| Natural local narration | Verified downloadable voices, paragraph/sentence tracking, synchronized highlighting, speed and time controls. |
+| PDF and Immersion views | Original layout for figures and tables, or reflowed text for sustained reading, sharing one reading position. |
+| Local translation | On-device Spanish, English, and Portuguese translation with a reversible Original/Translation switch. |
+| Recoverable audiobook export | One M4B file, chapter markers when reliable headings exist, preflight estimates, pause, resume, retry, and reveal in Finder. |
+| Private and offline by design | No account, telemetry, document upload, or external inference API; only explicit model downloads use the network. |
+
 ### Two ways to read
 
 - **Immersion Mode** strips the PDF down to clean, readable text — no page furniture, no leftover
@@ -56,8 +87,8 @@ The same local OCR engine (Apple's Vision, running on-device) that powers narrat
 documents with a damaged or poorly scanned text layer, and quietly skips page numbers, running
 headers, and footnotes so they never interrupt the reading aloud. Translation between Spanish,
 English, and Portuguese stays anchored to the original text — read the translation, hear it read
-aloud, or step back to the source at any point — and any document can be exported as a chaptered M4B
-audiobook for the moments when looking at a screen isn't an option.
+aloud, or step back to the source at any point — and any document can be exported as an M4B
+audiobook, with chapters whenever the document has a reliable heading structure.
 
 ### Who it's for
 
@@ -91,10 +122,14 @@ platform in the first place.
 
 ---
 
-Fluent Reading doesn't edit your PDF and doesn't promise clinical outcomes or guaranteed
-improvements in attention or retention. It runs on macOS with Apple Silicon today.
+Fluent Reading never changes your PDF without asking. After OCR, it can embed the recognized text
+only when you explicitly approve it; the page appearance stays the same. It doesn't promise
+clinical outcomes or guaranteed improvements in attention or retention. It runs on macOS with
+Apple Silicon today.
 
 ### Download and open it
+
+**System requirement:** an Apple Silicon Mac running macOS 15.0 or newer.
 
 Go to [Releases](../../releases) and download `LecturaFluida.dmg` (or the `.zip`, if you prefer).
 There's no App Store listing and no Apple notarization — this is free software built and signed
@@ -120,6 +155,12 @@ Rather build it yourself? Clone this repository and see the
 account is needed to build and run your own copy on your own Mac.
 
 **Ready to use it?** See the [user manual](MANUAL.en.md) for a step-by-step walkthrough.
+
+**Help and contributions.** If the manual does not resolve a problem, open an
+[issue](https://github.com/Anthropo-logics/Lectura-fluida/issues) with the app and macOS versions,
+the kind of PDF involved, and reproducible steps — never attach a confidential document. The
+project is maintained by Jaili Ivinai Buelvas Diaz; focused pull requests are welcome after the
+verification commands below pass.
 
 **License.** Copyright (C) 2026 Jaili Ivinai Buelvas Diaz. Free software under the GNU General
 Public License, version 3 or later (`GPL-3.0-or-later`) — see `LICENSE`. Third-party components it
@@ -163,6 +204,29 @@ terceros interponiéndose entre tú y tu propia lectura.
 Ese mismo principio define la licencia: Lectura Fluida es software libre (GPLv3), así que el código
 está ahí para que cualquiera lo lea, lo audite y lo mejore — véase `LICENSE` y `NOTICE`.
 
+### Qué puedes hacer
+
+- Abrir PDF digitales o escaneados y empezar con la primera unidad mientras las páginas cercanas
+  continúan preparándose.
+- Escuchar una voz local en español, inglés o portugués mientras se resalta el párrafo o la frase
+  activa.
+- Alternar entre el PDF original y una vista Inmersión limpia sin perder tu posición.
+- Traducir localmente entre español, inglés y portugués y volver al original en cualquiera de las
+  dos vistas.
+- Exportar la narración original o traducida como audiolibro M4B y pausar o reanudar exportaciones
+  largas.
+
+### Funciones
+
+| Función | Qué ofrece |
+|---|---|
+| Extracción y OCR con layout | Elige texto incrustado u OCR local página por página, conserva el orden y permite reintentar o forzar OCR. |
+| Narración local natural | Voces descargables verificadas, seguimiento por párrafo/frase, resaltado sincronizado, velocidad y saltos temporales. |
+| Vistas PDF e Inmersión | Diseño original para figuras y tablas o texto redistribuido para leer, con una misma posición. |
+| Traducción local | Traducción en el dispositivo entre español, inglés y portugués con selector reversible Original/Traducción. |
+| Exportación recuperable | Un M4B, capítulos cuando hay encabezados confiables, estimaciones previas, pausa, reanudación, reintento y acceso desde Finder. |
+| Privacidad y trabajo sin conexión | Sin cuenta, telemetría, carga del documento ni API externa; sólo las descargas explícitas de modelos usan la red. |
+
 ### Dos maneras de leer
 
 - **Modo Inmersión** reduce el PDF a texto limpio y legible —sin decoraciones ni restos de
@@ -181,9 +245,9 @@ El mismo motor de OCR local (Vision, de Apple, ejecutado en tu propio equipo) qu
 narración también repara documentos con una capa de texto dañada o mal escaneada, y salta en
 silencio números de página, encabezados repetidos y notas al pie para que nunca interrumpan la
 lectura en voz alta. La traducción entre español, inglés y portugués queda anclada al texto
-original —puedes leerla, escucharla, o volver a la fuente en cualquier momento— y cualquier
-documento puede exportarse como un audiolibro M4B con capítulos, para los momentos en que mirar una
-pantalla no es una opción.
+original —puedes leerla, escucharla o volver a la fuente en cualquier momento— y cualquier
+documento puede exportarse como audiolibro M4B, con capítulos cuando existe una estructura de
+encabezados confiable.
 
 ### Para quién es
 
@@ -218,10 +282,14 @@ precisamente para los libros que nunca iban a aparecer en una plataforma comerci
 
 ---
 
-Lectura Fluida no edita tu PDF ni promete resultados clínicos o mejoras garantizadas de atención o
-retención. Hoy corre en macOS con Apple Silicon.
+Lectura Fluida nunca cambia tu PDF sin preguntarte. Después del OCR puede incrustar el texto
+reconocido sólo si lo autorizas expresamente; la apariencia de las páginas se mantiene. No promete
+resultados clínicos ni mejoras garantizadas de atención o retención. Hoy corre en macOS con Apple
+Silicon.
 
 ### Descargarla y abrirla
+
+**Requisito del sistema:** un Mac con Apple Silicon y macOS 15.0 o posterior.
 
 Ve a [Releases](../../releases) y descarga `LecturaFluida.dmg` (o el `.zip`, si lo prefieres). No
 está en la App Store ni pasó por la notarización de Apple — es software libre compilado y firmado de
@@ -248,6 +316,12 @@ directamente y evita los diálogos.
 falta ninguna cuenta de Apple Developer para compilar y ejecutar tu propia copia en tu propio Mac.
 
 **¿Listo para usarla?** Consulta el [manual de uso](MANUAL.md), paso a paso.
+
+**Ayuda y contribuciones.** Si el manual no resuelve un problema, abre un
+[issue](https://github.com/Anthropo-logics/Lectura-fluida/issues) indicando las versiones de la app
+y macOS, el tipo de PDF y pasos reproducibles; nunca adjuntes un documento confidencial. Jaili
+Ivinai Buelvas Diaz mantiene el proyecto y se aceptan pull requests acotados cuando superan los
+comandos de verificación descritos más abajo.
 
 **Licencia.** Copyright (C) 2026 Jaili Ivinai Buelvas Diaz. Software libre bajo la Licencia Pública
 General de GNU, versión 3 o posterior (`GPL-3.0-or-later`) — véase `LICENSE`. Los componentes de
@@ -293,6 +367,29 @@ própria leitura.
 Esse mesmo princípio define a licença: a Leitura Fluída é software livre (GPLv3), então o código
 está ali para qualquer pessoa ler, auditar e melhorar — veja `LICENSE` e `NOTICE`.
 
+### O que você pode fazer
+
+- Abrir PDFs digitais ou escaneados e começar pela primeira unidade enquanto as páginas próximas
+  continuam sendo preparadas.
+- Ouvir uma voz local em espanhol, inglês ou português enquanto o parágrafo ou a frase ativa fica
+  destacado.
+- Alternar entre o PDF original e uma visualização Imersão limpa sem perder a posição.
+- Traduzir localmente entre espanhol, inglês e português e voltar ao original em qualquer uma das
+  duas visualizações.
+- Exportar a narração original ou traduzida como audiolivro M4B e pausar ou retomar exportações
+  longas.
+
+### Recursos
+
+| Recurso | O que oferece |
+|---|---|
+| Extração e OCR com layout | Escolhe texto incorporado ou OCR local página por página, preserva a ordem e permite tentar novamente ou forçar OCR. |
+| Narração local natural | Vozes verificadas para download, acompanhamento por parágrafo/frase, destaque sincronizado, velocidade e saltos temporais. |
+| Visualizações PDF e Imersão | Diagramação original para figuras e tabelas ou texto redistribuído para leitura, com uma mesma posição. |
+| Tradução local | Tradução no dispositivo entre espanhol, inglês e português com seletor reversível Original/Tradução. |
+| Exportação recuperável | Um M4B, capítulos quando há títulos confiáveis, estimativas prévias, pausa, retomada, nova tentativa e acesso no Finder. |
+| Privacidade e uso offline | Sem conta, telemetria, upload do documento ou API externa; só downloads explícitos de modelos usam a rede. |
+
 ### Duas formas de ler
 
 - **Modo Imersão** reduz o PDF a texto limpo e legível — sem decorações nem sobras de diagramação —
@@ -311,9 +408,8 @@ O mesmo motor de OCR local (Vision, da Apple, executado no seu próprio equipame
 narração também repara documentos com uma camada de texto danificada ou mal escaneada, e pula em
 silêncio números de página, cabeçalhos repetidos e notas de rodapé para que nunca interrompam a
 leitura em voz alta. A tradução entre espanhol, inglês e português fica ancorada ao texto original —
-você pode lê-la, ouvi-la, ou voltar à fonte a qualquer momento — e qualquer documento pode ser
-exportado como um audiolivro M4B com capítulos, para os momentos em que olhar para uma tela não é
-uma opção.
+você pode lê-la, ouvi-la ou voltar à fonte a qualquer momento — e qualquer documento pode ser
+exportado como audiolivro M4B, com capítulos quando existe uma estrutura confiável de títulos.
 
 ### Para quem é
 
@@ -348,10 +444,14 @@ apareceriam numa plataforma comercial.
 
 ---
 
-A Leitura Fluída não edita o seu PDF nem promete resultados clínicos ou melhorias garantidas de
-atenção ou retenção. Hoje roda em macOS com Apple Silicon.
+A Leitura Fluída nunca altera o seu PDF sem perguntar. Depois do OCR, pode incorporar o texto
+reconhecido somente com a sua autorização explícita; a aparência das páginas permanece igual. Não
+promete resultados clínicos nem melhorias garantidas de atenção ou retenção. Hoje funciona no macOS
+com Apple Silicon.
 
 ### Baixar e abrir
+
+**Requisito do sistema:** um Mac com Apple Silicon e macOS 15.0 ou posterior.
 
 Vá em [Releases](../../releases) e baixe `LecturaFluida.dmg` (ou o `.zip`, se preferir). Ela não
 está na App Store nem passou pela notarização da Apple — é software livre compilado e assinado
@@ -380,6 +480,12 @@ preciso nenhuma conta de Apple Developer para compilar e rodar a sua própria c�
 Mac.
 
 **Pronto para usar?** Veja o [manual de uso](MANUAL.pt.md), passo a passo.
+
+**Ajuda e contribuições.** Se o manual não resolver um problema, abra uma
+[issue](https://github.com/Anthropo-logics/Lectura-fluida/issues) informando as versões do aplicativo
+e do macOS, o tipo de PDF e passos reproduzíveis; nunca anexe um documento confidencial. Jaili
+Ivinai Buelvas Diaz mantém o projeto, e pull requests bem delimitados são bem-vindos depois de
+passarem pelos comandos de verificação abaixo.
 
 **Licença.** Copyright (C) 2026 Jaili Ivinai Buelvas Diaz. Software livre sob a Licença Pública
 Geral GNU, versão 3 ou posterior (`GPL-3.0-or-later`) — veja `LICENSE`. Os componentes de terceiros
@@ -421,7 +527,8 @@ descarga modelos ni corpus. No existe `.env` de producto.
 
 ### Compilar y verificar
 
-Todos los gates pasan por `scripts/verify.sh`, que es también lo que ejecutan los scripts de npm:
+Todas las verificaciones pasan por `scripts/verify.sh`, que es también lo que ejecutan los scripts
+de npm:
 
 ```bash
 npm run lint        # ./scripts/verify.sh lint       — cargo fmt, JSON válido, bash -n, swift format
@@ -430,6 +537,23 @@ npm test            # ./scripts/verify.sh test       — cargo + integración + 
 npm run build       # ./scripts/verify.sh build
 ./scripts/verify.sh all
 ```
+
+`npm test` nunca activa pruebas con modelos o corpus reales por detectar un volumen local. Ejecute
+esas pruebas de forma explícita y suministre todos sus artefactos:
+
+```bash
+LECTURA_MODEL_ROOT=/ruta/modelos LECTURA_REAL_PDF=/ruta/documento.pdf \
+  ./scripts/verify.sh real-runtime
+
+LECTURA_REAL_PDF_CORPUS=/ruta/corpus-pdf \
+  ./scripts/verify.sh real-first-page
+```
+
+El primer comando construye `target/release/lectura` y activa las tres pruebas de integración
+Kokoro/PDF mediante `LECTURA_REAL_RUNTIME_TEST=1`. El segundo activa la prueba de rendimiento de
+primera página mediante `LECTURA_FIRST_PAGE_PERFORMANCE_TEST=1`; exige al menos dos PDF y el Mac de
+referencia aprobado. Si se ejecutan directamente desde Xcode, defina también el opt-in
+correspondiente. Los modelos, pesos y corpus permanecen fuera del repositorio.
 
 Compilar solo la aplicación:
 
@@ -452,16 +576,19 @@ Los runtimes de voz y traducción se compilan fuera de este repositorio y **se c
 bundle; no hay fase de build que lo haga:
 
 ```bash
-./scripts/embed-runtimes.sh /ruta/a/LecturaFluida.app [raíz-de-modelos]
+LECTURA_RELEASE_CHANNEL=adhoc \
+  ./scripts/embed-runtimes.sh /ruta/a/LecturaFluida.app [raíz-de-modelos]
 ```
 
 El script copia `mlx-audio-swift-tts`, `lectura-translate-runtime` y eSpeak NG a
-`Contents/Helpers/`, y los vuelve a firmar. El App Sandbox concede lectura sobre una carpeta externa
+`Contents/Helpers/` solo después de verificar tamaño y SHA-256 contra el manifiesto versionado, y
+los vuelve a firmar. `adhoc` queda rotulado como no endurecido/no notarizado; `developer-id` exige
+identidad y perfil de notarización externos. El App Sandbox concede lectura sobre una carpeta externa
 de modelos pero nunca permiso de ejecución, así que un helper fuera del bundle no puede arrancar.
 
 #### CLI
 
-El núcleo Rust expone una CLI usada por los harnesses de evidencia:
+El núcleo Rust expone una CLI usada por las pruebas automatizadas:
 
 ```bash
 cargo run --locked -p lectura-cli -- canary --json
@@ -480,11 +607,12 @@ No inicia servidores ni realiza tráfico de red; `127.0.0.1` no forma parte del 
 | `crates/lectura-cli`, `crates/lectura-ffi` | CLI de evidencia y puente FFI hacia Swift |
 | `contracts/lf-v1` | Esquemas JSON del contrato entre núcleo y aplicación |
 | `models/manifests` | Manifiestos verificados de cada modelo evaluado o distribuido |
-| `docs/` | PRD, arquitectura, stories, QA, cumplimiento y runlogs |
+| `docs/` | Documentación interna de producto, arquitectura, calidad, cumplimiento y registros |
 | `scripts/` | Bootstrap, verificación, build de Rust, empotrado de runtimes |
 
-Los modelos no se empaquetan con la aplicación: se descargan bajo demanda, verificando tamaño y
-sha256 contra un manifiesto, a la carpeta que el lector elige (puede ser un disco externo). La
-aplicación nunca impone una ubicación fija.
+Los modelos de voz y traducción se descargan bajo demanda, verificando tamaño y sha256 contra un
+manifiesto, a la carpeta que el lector elige (puede ser un disco externo). El clasificador de layout
+PP-DocLayoutV3 sí se empaqueta con la aplicación y se verifica durante el build. La aplicación nunca
+impone una ubicación fija para los modelos descargables.
 
 Cambios por versión: `CHANGELOG.md`.

@@ -26,7 +26,6 @@ pub use extraction::{
     PageProcessingRecord, PageProcessingStatus, ProcessingRoute, ReadingAnchor, ReadingUnit,
     ReadingUnitKind, RequestedUnit, SourceRegion, UnitOrderKey, character_error_rate,
     measure_digital_block_order, normalize_digital_document, normalize_digital_page,
-    select_processing_route,
 };
 pub use gate_a::{
     GateACondition, GateAMetric, GateAMetricName, GateAMetricUnit, GateAProgress, GateAResult,
@@ -369,6 +368,29 @@ fn direct_text_degradation(page: &NormalizedPage, language: &str) -> Option<&'st
     None
 }
 
+pub fn apply_direct_text_route(
+    page: &mut NormalizedPage,
+    language: &str,
+    raster_content_detected: bool,
+) {
+    if raster_content_detected {
+        page.record.route = ProcessingRoute::Ocr;
+        page.record.reason_code = "raster_content_detected".into();
+        return;
+    }
+    let has_trusted_prose = page
+        .units
+        .iter()
+        .any(|unit| unit.content_class == ContentClass::Prose && unit.confidence >= 0.6);
+    if !has_trusted_prose {
+        page.record.route = ProcessingRoute::Ocr;
+        page.record.reason_code = "direct_text_insufficient".into();
+    } else if let Some(reason) = direct_text_degradation(page, language) {
+        page.record.route = ProcessingRoute::Ocr;
+        page.record.reason_code = reason.into();
+    }
+}
+
 /// Page furniture is only recognisable by repetition, and repetition is only visible across pages —
 /// but the reader asks the engine for one page at a time. The evidence each document has produced
 /// so far is therefore kept alongside its fingerprint for as long as the process lives.
@@ -609,6 +631,8 @@ pub fn handle_request(input: &[u8]) -> Result<EventEnvelope, RequestError> {
                 requested_unit: RequestedUnit,
                 route: ProcessingRoute,
                 adapter_status: String,
+                #[serde(default)]
+                raster_content_detected: bool,
             }
 
             let payload: Payload = serde_json::from_value(request.payload)
@@ -635,6 +659,11 @@ pub fn handle_request(input: &[u8]) -> Result<EventEnvelope, RequestError> {
                 observe_page_furniture(&payload.page.document_fingerprint, &payload.page);
             let mut normalized =
                 normalize_digital_page(&page, &payload.language, payload.requested_unit);
+            apply_direct_text_route(
+                &mut normalized,
+                &payload.language,
+                payload.raster_content_detected,
+            );
             let mut omissions = furniture_omissions;
             // A page that held nothing but its own margins is not a failure to read: it is a page
             // whose only content was furniture, and the trace already says so.
@@ -644,35 +673,24 @@ pub fn handle_request(input: &[u8]) -> Result<EventEnvelope, RequestError> {
             }
             omissions.append(&mut normalized.omissions);
             normalized.omissions = omissions;
-            let has_trusted_prose = normalized
-                .units
-                .iter()
-                .any(|unit| unit.content_class == ContentClass::Prose && unit.confidence >= 0.6);
             if payload.route == ProcessingRoute::Ocr {
                 normalized.record.route = ProcessingRoute::Ocr;
                 for unit in &mut normalized.units {
                     unit.processing_route = ProcessingRoute::Ocr;
                 }
-                normalized.record.reason_code = if has_trusted_prose {
-                    "ocr_completed"
-                } else {
-                    "ocr_insufficient"
-                }
-                .into();
+                normalized.record.reason_code =
+                    if normalized.units.iter().any(|unit| {
+                        unit.content_class == ContentClass::Prose && unit.confidence >= 0.6
+                    }) {
+                        "ocr_completed"
+                    } else {
+                        "ocr_insufficient"
+                    }
+                    .into();
                 normalized.record.processor_revision = "vision-v1".into();
                 if payload.adapter_status != "completed" {
                     normalized.record.status = PageProcessingStatus::Degraded;
                 }
-            } else if !has_trusted_prose {
-                normalized.record.route = ProcessingRoute::Ocr;
-                normalized.record.reason_code = "direct_text_insufficient".into();
-            } else if let Some(reason) = direct_text_degradation(&normalized, &payload.language) {
-                // Scanned books often carry a poor embedded text layer. It classifies as ordinary
-                // prose, so confidence alone accepted it and OCR was never attempted — the reader
-                // got "Pie! negra, mascaras" instead of "Piel negra, máscaras". The reason code says
-                // which of the four signals caught it.
-                normalized.record.route = ProcessingRoute::Ocr;
-                normalized.record.reason_code = reason.into();
             }
             EventResult::NormalizedPage(normalized)
         }

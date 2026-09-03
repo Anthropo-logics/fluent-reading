@@ -9,6 +9,66 @@ import XCTest
 @testable import MacPlatform
 
 final class DocumentServicesTests: XCTestCase {
+  @MainActor
+  func testOutlineProjectionsPreserveTheirSeparateContracts() throws {
+    let url = try makePDF(pageCount: 2, rotation: 0)
+    defer { try? FileManager.default.removeItem(at: url) }
+    let document = try DocumentServices.openReadOnly(at: url)
+    let firstPage = try XCTUnwrap(document.page(at: 0))
+    let secondPage = try XCTUnwrap(document.page(at: 1))
+    let root = PDFOutline()
+    let chapter = PDFOutline()
+    chapter.label = "  Chapter One  "
+    chapter.destination = PDFDestination(page: firstPage, at: .zero)
+    let section = PDFOutline()
+    section.label = "f - 0002"
+    section.destination = PDFDestination(page: secondPage, at: .zero)
+    chapter.insertChild(section, at: 0)
+    root.insertChild(chapter, at: 0)
+    document.outlineRoot = root
+
+    let flat = DocumentServices.outlineEntries(from: document)
+    XCTAssertEqual(flat.map(\.title), ["  Chapter One  ", "f - 0002"])
+    XCTAssertEqual(flat.map(\.pageIndex), [0, 1])
+
+    let hierarchy = DocumentServices.outlineOutline(from: document)
+    XCTAssertEqual(hierarchy.map(\.title), ["Chapter One", "f - 0002"])
+    XCTAssertEqual(hierarchy.map(\.pageIndex), [0, 1])
+    XCTAssertEqual(hierarchy.map(\.level), [0, 1])
+  }
+
+  @MainActor
+  func testPDFViewReportsAUserVisiblePageChangeAndDropsThePreviousTranslation() throws {
+    let url = try makePDF(pageCount: 2, rotation: 0)
+    defer { try? FileManager.default.removeItem(at: url) }
+    let document = try DocumentServices.openReadOnly(at: url)
+    let view = ReadOnlyPDFView(frame: NSRect(x: 0, y: 0, width: 600, height: 700))
+    view.document = document
+    view.showTranslations(
+      [
+        TranslatedOverlayBlock(
+          unitID: "page-0-unit", pageIndex: 0, rectPDFPoints: [20, 20, 200, 80],
+          text: "Translated page zero")
+      ], forPage: 0)
+    var visiblePages: [Int] = []
+    view.onVisiblePageChange = { visiblePages.append($0) }
+
+    view.go(to: try XCTUnwrap(document.page(at: 1)))
+    RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+
+    XCTAssertEqual(visiblePages.last, 1)
+    XCTAssertFalse(view.hasVisibleTranslationOverlay)
+  }
+
+  func testTranslatedOverlayIdentityDistinguishesEqualTextFromDifferentUnits() {
+    let first = TranslatedOverlayBlock(
+      unitID: "unit-a", pageIndex: 0, rectPDFPoints: [10, 20, 100, 40], text: "Same text")
+    let second = TranslatedOverlayBlock(
+      unitID: "unit-b", pageIndex: 0, rectPDFPoints: [10, 20, 100, 40], text: "Same text")
+
+    XCTAssertNotEqual(first, second)
+  }
+
   func testLayoutEvidenceDecodesFromOldPayloadAndEncodesWithSnakeCaseKeys() throws {
     let oldPayload =
       #"{"block_id":"old","text":"text","region":{"page_index":0,"rect_pdf_points":[0,0,10,10],"page_rotation_degrees":0,"source_to_page_transform":[1,0,0,1,0,0],"confidence":1},"confidence":1}"#
@@ -314,7 +374,8 @@ final class DocumentServicesTests: XCTestCase {
     view.showTranslations(
       [
         TranslatedOverlayBlock(
-          pageIndex: 0, rectPDFPoints: [40, 700, 500, 40], text: "Translated.")
+          unitID: "translated-unit", pageIndex: 0, rectPDFPoints: [40, 700, 500, 40],
+          text: "Translated.")
       ],
       forPage: 0)
     view.show(
@@ -486,6 +547,164 @@ final class DocumentServicesTests: XCTestCase {
     XCTAssertEqual(try digest(url), before)
   }
 
+  func testOCRRepairsOnlySuspiciousGlyphRunsAndPreservesLegitimateHashAndDigits() {
+    func block(_ id: String, _ text: String, _ rect: [Double], confidence: Double = 1)
+      -> DigitalTextBlock
+    {
+      DigitalTextBlock(
+        blockID: id, text: text,
+        region: DigitalSourceRegion(
+          pageIndex: 0, rectPDFPoints: rect, pageRotationDegrees: 0,
+          sourceToPageTransform: [1, 0, 0, 1, 0, 0], confidence: confidence),
+        confidence: confidence)
+    }
+    let direct = DigitalPageResult(
+      pageIndex: 0, status: "completed",
+      blocks: [
+        block("word", "All children received su#-", [68, 320, 294, 12]),
+        block("word-continuation", "cient nutrition.", [68, 307, 294, 12]),
+        block("parenthetical-a", "ICBF, because of its service’!", [68, 280, 201, 12]),
+        block("parenthetical-b", "– i.e. child protection!", [269, 280, 89, 12]),
+        block("parenthetical-c", "–", [358, 280, 5, 12]),
+        block("code", "C# is a legitimate identifier.", [68, 250, 294, 12]),
+        block("letter", "porque no se extendio la relacion sa!arial", [68, 238, 294, 12]),
+        block("note", "Domestic law8 as integral protection:!", [68, 225, 230, 12]),
+        block("note-marker", "9 this included education.", [298, 225, 65, 12]),
+      ], errorCode: nil)
+    let recognized = DigitalPageResult(
+      pageIndex: 0, status: "completed",
+      blocks: [
+        block("ocr-word", "All children received suffi-", [68, 320, 294, 12], confidence: 0.98),
+        block("ocr-word-continuation", "cient nutrition.", [68, 307, 294, 12], confidence: 0.98),
+        block(
+          "ocr-parenthetical", "ICBF, because of its service’ – i.e. child protection –",
+          [68, 280, 295, 12], confidence: 0.98),
+        block("ocr-code", "C# is a legitimate identifier.", [68, 250, 294, 12], confidence: 0.98),
+        block(
+          "ocr-letter", "porque no se extendio la relacion salarial", [68, 238, 294, 12],
+          confidence: 0.98),
+        block(
+          "ocr-note", "Domestic law as integral protection: ' this included education.",
+          [68, 225, 295, 12], confidence: 0.98),
+      ], errorCode: nil)
+
+    let repaired = DocumentServices.repairDigitalText(direct, with: recognized)
+    let text = repaired.blocks.map(\.text).joined(separator: "\n")
+
+    XCTAssertTrue(text.contains("suffi-\ncient"), text)
+    XCTAssertTrue(text.contains("service’ – i.e. child protection –"), text)
+    XCTAssertTrue(text.contains("C# is a legitimate identifier"), text)
+    XCTAssertTrue(text.contains("relacion salarial"), text)
+    XCTAssertTrue(text.contains("law8 as integral protection: 9 this included"), text)
+    XCTAssertFalse(text.contains("su#"), text)
+    XCTAssertFalse(text.contains(":!"), text)
+  }
+
+  func testAsyncDigitalExtractionAutomaticallyRepairsBordaWithVisionEvidence() async throws {
+    guard let path = gateEnvironment("LECTURA_REAL_BOOK_PDF") else {
+      throw XCTSkip("Set LECTURA_REAL_BOOK_PDF for the real damaged-character-map regression")
+    }
+    let page = await DocumentServices.extractDigitalPage(
+      at: URL(fileURLWithPath: path), pageIndex: 9)
+    let text = page.blocks.map(\.text).joined(separator: " ")
+
+    XCTAssertTrue(text.contains("service’ – i.e. child protection –"), text)
+    XCTAssertFalse(text.contains(":!"), text)
+    XCTAssertTrue(text.contains("institution.20"), text)
+    let pageTenEvent = try await EngineClient.normalizePage(
+      page, documentFingerprint: "borda-regression", generationID: "generation-borda",
+      language: "en", route: "direct_text")
+    let pageTen = try XCTUnwrap(pageTenEvent.result?.normalizedPage)
+    XCTAssertFalse(pageTen.units.contains { $0.contentClass == "formula" })
+    let pageTenSpoken = pageTen.units.map(\.narrationText).joined(separator: " ")
+    XCTAssertFalse(pageTenSpoken.contains("institution.20"), pageTenSpoken)
+    XCTAssertFalse(pageTenSpoken.contains("contract.21"), pageTenSpoken)
+    XCTAssertTrue(pageTenSpoken.contains("1979"), pageTenSpoken)
+    XCTAssertTrue(
+      pageTen.units.contains {
+        $0.text.contains("An exceptional administrative contract")
+          && $0.text.contains("can enact this type of contract.21")
+      }, pageTen.units.map(\.text).joined(separator: "\n---\n"))
+
+    let earlier = await DocumentServices.extractDigitalPage(
+      at: URL(fileURLWithPath: path), pageIndex: 6)
+    let event = try await EngineClient.normalizePage(
+      earlier, documentFingerprint: "borda-regression", generationID: "generation-borda",
+      language: "en", route: "direct_text")
+    let normalized = try XCTUnwrap(event.result?.normalizedPage)
+    let visible = normalized.units.map(\.text).joined(separator: " ")
+    let spoken = normalized.units.map(\.narrationText).joined(separator: " ")
+    XCTAssertTrue(visible.contains("sufficient nutrition"), visible)
+    XCTAssertTrue(visible.contains("the state"), visible)
+    XCTAssertTrue(visible.contains("care.7"), visible)
+    XCTAssertTrue(visible.contains("law8"), visible)
+    XCTAssertFalse(spoken.contains("care.7"), spoken)
+    XCTAssertFalse(spoken.contains("law8"), spoken)
+    XCTAssertTrue(spoken.contains("1979"), spoken)
+  }
+
+  func testOCRRepairGeneralizesAcrossRealCorpusWithoutChangingLegitimateHashes() async throws {
+    guard let root = corpusRoot else { throw XCTSkip("LECTURA_PDF_CORPUS no configurada") }
+    let relatives = try FileManager.default.subpathsOfDirectory(atPath: root.path)
+    func pdf(_ name: String) throws -> URL {
+      try XCTUnwrap(
+        relatives.first { URL(fileURLWithPath: $0).lastPathComponent == name }
+          .map(root.appendingPathComponent), "No se encontró \(name) en el corpus")
+    }
+    func extract(_ name: String, page: Int, language: String) async throws -> DigitalPageResult {
+      let extracted = await DocumentServices.extractDigitalPage(
+        at: try pdf(name), pageIndex: page - 1, language: language)
+      XCTAssertEqual(extracted.status, "completed", "\(name) p\(page)")
+      return extracted
+    }
+    func content(_ page: DigitalPageResult) -> String {
+      page.blocks.map(\.text).joined(separator: " ")
+    }
+
+    let bordaSevenPage = try await extract(
+      "BordaCarulla2018-fulltext.pdf", page: 7, language: "en")
+    let bordaTenPage = try await extract(
+      "BordaCarulla2018-fulltext.pdf", page: 10, language: "en")
+    let bordaEighteenPage = try await extract(
+      "BordaCarulla2018-fulltext.pdf", page: 18, language: "en")
+    let bordaSeven = content(bordaSevenPage)
+    let bordaTen = content(bordaTenPage)
+    let bordaEighteen = content(bordaEighteenPage)
+    XCTAssertTrue(bordaSeven.contains("suffi- cient nutrition"), bordaSeven)
+    XCTAssertFalse(bordaSeven.contains(":!"), bordaSeven)
+    XCTAssertTrue(bordaTen.contains("community homes: the law"), bordaTen)
+    XCTAssertTrue(bordaEighteen.contains("16 years old"), bordaEighteen)
+    XCTAssertTrue(bordaEighteen.contains("almost 30 years"), bordaEighteen)
+
+    let vegaPage = try await extract("VegaVargas2010-fulltext.pdf", page: 45, language: "es")
+    let vega = content(vegaPage)
+    XCTAssertTrue(vega.contains("relacion salarial"), vega)
+
+    for (id, page, language) in [
+      ("borda-7", bordaSevenPage, "en"), ("borda-10", bordaTenPage, "en"),
+      ("borda-18", bordaEighteenPage, "en"), ("vega-45", vegaPage, "es"),
+    ] {
+      let event = try await EngineClient.normalizePage(
+        page, documentFingerprint: "glyph-corpus-\(id)", generationID: "generation-\(id)",
+        language: language, route: "direct_text")
+      let normalized = try XCTUnwrap(event.result?.normalizedPage)
+      XCTAssertFalse(
+        normalized.units.contains { $0.contentClass == "formula" },
+        "\(id): \(normalized.units.filter { $0.contentClass == "formula" }.map(\.text))")
+    }
+
+    let legitimateHashes = [
+      content(try await extract("Carrillo2014-fulltext.pdf", page: 50, language: "en")),
+      content(try await extract("Carrillo2014-fulltext.pdf", page: 363, language: "en")),
+      content(try await extract("SubdireccionGeneral2023-fulltext.pdf", page: 87, language: "es")),
+      content(try await extract("AlviarGarcia2011-fulltext.pdf", page: 3, language: "en")),
+    ].joined(separator: "\n")
+    for fragment in ["#91", ".html#top", ".pdf#page=2", "#twoj_fragment1-3"] {
+      XCTAssertTrue(
+        legitimateHashes.contains(fragment), "Se alteró \(fragment): \(legitimateHashes)")
+    }
+  }
+
   @MainActor
   func testExtractsScannedPageWithVisionAndPreservesSource() throws {
     let root = URL(fileURLWithPath: #filePath)
@@ -552,6 +771,21 @@ final class DocumentServicesTests: XCTestCase {
       }
     }
     XCTAssertGreaterThan(ink, 10, "the scanned page rendered as an empty white bitmap")
+  }
+
+  func testDigitalExtractionReportsRasterContentWithoutRunningOCR() async throws {
+    let root = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent().deletingLastPathComponent()
+      .deletingLastPathComponent().deletingLastPathComponent()
+    let mixed = root.appendingPathComponent("tests/corpus/documents/es-mixed.pdf")
+    let digital = root.appendingPathComponent("tests/corpus/documents/es-single-digital.pdf")
+
+    let mixedPage = await DocumentServices.extractDigitalPage(at: mixed, pageIndex: 0)
+    let digitalPage = await DocumentServices.extractDigitalPage(at: digital, pageIndex: 0)
+
+    XCTAssertEqual(mixedPage.rasterContentDetected, true)
+    XCTAssertEqual(digitalPage.rasterContentDetected, false)
+    XCTAssertEqual(mixedPage.blocks.count, 1, "raster detection must not perform OCR itself")
   }
 
   func testOCRRenderUsesDisplayedAxesForQuarterTurnedPages() {

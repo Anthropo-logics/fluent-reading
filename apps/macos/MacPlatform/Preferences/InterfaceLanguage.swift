@@ -77,3 +77,69 @@ public enum InterfaceLanguage: String, CaseIterable, Sendable {
     return (global?[appleLanguagesKey] as? [String]) ?? Locale.preferredLanguages
   }
 }
+
+/// One-shot state carried across the process restart required by an interface-language change.
+/// It deliberately lives beside `InterfaceLanguage`: ordinary launches must not reopen a document.
+public struct LanguageRestartReadingState: Codable, Equatable, Sendable {
+  public let documentBookmark: Data
+  public let pageIndex: Int
+  public let unitID: String?
+  public let readingSurface: String
+  public let trackingUnit: String
+  public let voiceLanguage: String
+  public let voiceID: String
+  public let narrationRate: Double
+  public let narrationSource: String
+  public let translationTargetLanguage: String
+  public let resumesNarration: Bool
+
+  public init?(
+    documentBookmark: Data, pageIndex: Int, unitID: String?, readingSurface: String,
+    trackingUnit: String, voiceLanguage: String, voiceID: String, narrationRate: Double,
+    narrationSource: String, translationTargetLanguage: String, resumesNarration: Bool
+  ) {
+    guard !documentBookmark.isEmpty, pageIndex >= 0,
+      unitID.map({ !$0.isEmpty }) ?? true,
+      ["pdf", "immersion"].contains(readingSurface),
+      ["paragraph", "sentence"].contains(trackingUnit),
+      narrationRate.isFinite, (0.5...3).contains(narrationRate),
+      ["original", "translation"].contains(narrationSource)
+    else { return nil }
+    self.documentBookmark = documentBookmark
+    self.pageIndex = pageIndex
+    self.unitID = unitID
+    self.readingSurface = readingSurface
+    self.trackingUnit = trackingUnit
+    self.voiceLanguage = voiceLanguage
+    self.voiceID = voiceID
+    self.narrationRate = narrationRate
+    self.narrationSource = narrationSource
+    self.translationTargetLanguage = translationTargetLanguage
+    self.resumesNarration = resumesNarration
+  }
+}
+
+/// The persisted value is consumed before decoding so corrupt or stale data cannot create a launch
+/// loop. A normal quit never writes it; a language restart is the only producer.
+public enum LanguageRestartReadingStore {
+  public static let key = "interface.language.restart-reading-state"
+
+  @discardableResult
+  public static func save(
+    _ state: LanguageRestartReadingState, defaults: UserDefaults = .standard
+  ) -> Bool {
+    guard let data = try? JSONEncoder().encode(state) else { return false }
+    defaults.set(data, forKey: key)
+    return true
+  }
+
+  public static func take(defaults: UserDefaults = .standard) -> LanguageRestartReadingState? {
+    guard let data = defaults.data(forKey: key) else { return nil }
+    defaults.removeObject(forKey: key)
+    return try? JSONDecoder().decode(LanguageRestartReadingState.self, from: data)
+  }
+
+  public static func clear(defaults: UserDefaults = .standard) {
+    defaults.removeObject(forKey: key)
+  }
+}

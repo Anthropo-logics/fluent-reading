@@ -155,18 +155,6 @@ pub enum ProcessingRoute {
     Ocr,
 }
 
-pub fn select_processing_route(
-    direct_block_count: usize,
-    ocr_block_count: usize,
-    force_ocr: bool,
-) -> ProcessingRoute {
-    if force_ocr || direct_block_count == 0 || ocr_block_count > direct_block_count {
-        ProcessingRoute::Ocr
-    } else {
-        ProcessingRoute::DirectText
-    }
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ReadingUnitKind {
@@ -179,6 +167,7 @@ pub enum ReadingUnitKind {
 pub enum ContentClass {
     Prose,
     Table,
+    Chart,
     Formula,
     Note,
     /// A structural title. Scanned books frequently ship an outline with meaningless labels
@@ -353,9 +342,10 @@ pub fn normalize_digital_page(
         order_blocks(&mut blocks)
     };
     let multi_column = column_boundary.is_some();
+    let (inferred_note_callouts, leading_note_callout_blocks) = inferred_endnote_callouts(&blocks);
 
     if blocks.is_empty() {
-        return NormalizedPage {
+        let mut normalized = NormalizedPage {
             record: PageProcessingRecord {
                 page_id: stable_page_id(page),
                 page_index: page.page_index,
@@ -371,6 +361,8 @@ pub fn normalize_digital_page(
             anchors: vec![],
             omissions: vec![],
         };
+        crate::apply_direct_text_route(&mut normalized, language, false);
+        return normalized;
     }
 
     // Margins are measured per column. A two-column article has two text blocks with their own
@@ -389,13 +381,19 @@ pub fn normalize_digital_page(
     // Group the extracted lines into paragraphs before turning them into reading units.
     let mut groups: Vec<Vec<ExtractedBlock>> = Vec::new();
     for block in blocks.into_iter() {
-        let start_new = match (
-            groups.last().and_then(|group| group.last()),
-            metrics_for(&block),
-        ) {
-            (Some(previous), Some(metrics)) => {
+        let start_new = match (groups.last(), metrics_for(&block)) {
+            (Some(group), Some(metrics)) => {
+                let previous = group
+                    .len()
+                    .checked_sub(2)
+                    .and_then(|index| group.get(index).zip(group.last()))
+                    .filter(|(text, punctuation)| {
+                        inline_punctuation_continuation(text, punctuation, metrics)
+                    })
+                    .map_or_else(|| group.last().expect("non-empty group"), |(text, _)| text);
                 in_second_column(previous) != in_second_column(&block)
-                    || starts_new_paragraph(previous, &block, metrics)
+                    || (!same_layout_region(previous, &block)
+                        && starts_new_paragraph(previous, &block, metrics))
             }
             _ => true,
         };
@@ -438,10 +436,32 @@ pub fn normalize_digital_page(
         let mut line_texts = Vec::with_capacity(group.len());
         let mut spoken_line_texts = Vec::with_capacity(group.len());
         for block in &group {
-            let (text, spoken_text, trace) = normalize_text(block);
+            let (text, mut spoken_text, mut trace) = normalize_text(block);
+            let projected = omit_inferred_note_callouts(
+                &spoken_text,
+                &inferred_note_callouts,
+                leading_note_callout_blocks.contains(&block.block_id),
+            );
+            if projected != spoken_text {
+                spoken_text = projected;
+                trace.push(NormalizationDecision {
+                    rule: "omit_inferred_endnote_callout_from_narration".into(),
+                    confidence: block.confidence.clamp(0.0, 1.0),
+                    affected_segments: vec![block.block_id.clone()],
+                });
+            }
             line_texts.push(text);
             spoken_line_texts.push(spoken_text);
             decision_trace.extend(trace);
+        }
+        if group.len() > 1 {
+            let body_height = reading_rect(&group[1].region)[3];
+            if is_drop_cap_for(&group[0], &group[1], body_height) {
+                line_texts[1] = format!("{}{}", line_texts[0], line_texts[1]);
+                spoken_line_texts[1] = format!("{}{}", spoken_line_texts[0], spoken_line_texts[1]);
+                line_texts.remove(0);
+                spoken_line_texts.remove(0);
+            }
         }
         let text = join_paragraph_text(&line_texts);
         let mut spoken_text = join_paragraph_text(&spoken_line_texts);
@@ -532,6 +552,16 @@ pub fn normalize_digital_page(
         };
         let (content_class, narration_disposition) = selected_layout
             .and_then(|(role, layout_confidence)| {
+                // Formula support is paused: keep the source visible and audible through the
+                // ordinary prose/note policy, without activating visual recognition.
+                if role == LayoutRole::Formula {
+                    decision_trace.push(NormalizationDecision {
+                        rule: "formula_support_paused".into(),
+                        confidence: layout_confidence,
+                        affected_segments: affected.clone(),
+                    });
+                    return None;
+                }
                 apply_layout_policy(role).map(|(class, disposition)| {
                     decision_trace.push(NormalizationDecision {
                         rule: format!("ml_layout_role_{}", role.as_str()),
@@ -568,6 +598,7 @@ pub fn normalize_digital_page(
         });
     }
 
+    join_hyphenated_continuations(&mut paragraphs, &column_metrics, column_boundary);
     join_heading_continuations(&mut paragraphs, &column_metrics, column_boundary);
 
     let units = match requested {
@@ -600,7 +631,7 @@ pub fn normalize_digital_page(
     let has_complex_content = units
         .iter()
         .any(|unit| unit.content_class != ContentClass::Prose);
-    NormalizedPage {
+    let mut normalized = NormalizedPage {
         record: PageProcessingRecord {
             page_id: stable_page_id(page),
             page_index: page.page_index,
@@ -619,7 +650,9 @@ pub fn normalize_digital_page(
         units,
         anchors,
         omissions: folio_omissions,
-    }
+    };
+    crate::apply_direct_text_route(&mut normalized, language, false);
+    normalized
 }
 
 pub fn normalize_digital_document(
@@ -788,9 +821,10 @@ struct FurnitureTally {
 #[derive(Debug, Default, Clone)]
 pub struct FurnitureEvidence {
     tallies: BTreeMap<String, FurnitureTally>,
-    exact_pages: BTreeMap<String, BTreeSet<u32>>,
+    exact_pages: BTreeMap<String, BTreeMap<String, BTreeSet<u32>>>,
     seen_pages: BTreeSet<u32>,
     eligible: [usize; 2],
+    qualified: Option<BTreeMap<String, PageEdge>>,
 }
 
 impl FurnitureEvidence {
@@ -798,6 +832,7 @@ impl FurnitureEvidence {
         if !self.seen_pages.insert(page.page_index) {
             return;
         }
+        self.qualified = None;
         let edges = edge_blocks(page);
         if edges.is_empty() {
             return;
@@ -806,12 +841,15 @@ impl FurnitureEvidence {
         let span = page_span(page);
         for (index, edge) in edges {
             let block = &page.blocks[index];
-            let template = furniture_template(&block.text);
+            let literal = furniture_literal(&block.text);
+            let template = furniture_template(&literal);
             if template.trim().is_empty() {
                 continue;
             }
             self.exact_pages
-                .entry(furniture_literal(&block.text))
+                .entry(template.clone())
+                .or_default()
+                .entry(literal)
                 .or_default()
                 .insert(page.page_index);
             let tally = self.tallies.entry(template).or_default();
@@ -829,7 +867,7 @@ impl FurnitureEvidence {
         }
     }
 
-    fn qualified(&self) -> BTreeMap<&str, PageEdge> {
+    fn compute_qualified(&self) -> BTreeMap<String, PageEdge> {
         let total = self.eligible[0] + self.eligible[1];
         let repeats = |pages: &BTreeSet<u32>| {
             let mut parity = [0_usize; 2];
@@ -844,8 +882,10 @@ impl FurnitureEvidence {
             .iter()
             .filter_map(|(template, tally)| {
                 let seen = tally.pages.len();
-                let exact_repeat = self.exact_pages.iter().any(|(literal, pages)| {
-                    furniture_template(literal) == *template && pages.len() >= 3 && repeats(pages)
+                let exact_repeat = self.exact_pages.get(template).is_some_and(|literals| {
+                    literals
+                        .values()
+                        .any(|pages| pages.len() >= 3 && repeats(pages))
                 });
                 let qualifies = if exact_repeat {
                     true
@@ -863,7 +903,7 @@ impl FurnitureEvidence {
                     } else {
                         PageEdge::Header
                     };
-                    (template.as_str(), edge)
+                    (template.clone(), edge)
                 })
             })
             .collect()
@@ -871,8 +911,11 @@ impl FurnitureEvidence {
 
     /// Removes from the page the margin lines that the document has shown to be furniture, and
     /// returns the decisions that account for every one of them.
-    pub fn strip(&self, page: &PageExtraction) -> (PageExtraction, Vec<NormalizationDecision>) {
-        let furniture = self.qualified();
+    pub fn strip(&mut self, page: &PageExtraction) -> (PageExtraction, Vec<NormalizationDecision>) {
+        if self.qualified.is_none() {
+            self.qualified = Some(self.compute_qualified());
+        }
+        let furniture = self.qualified.as_ref().expect("qualification was cached");
         if furniture.is_empty() {
             return (page.clone(), Vec::new());
         }
@@ -1013,6 +1056,9 @@ fn starts_new_paragraph(
     {
         return true;
     }
+    if same_visual_line(previous, next, metrics) {
+        return false;
+    }
     // Only lines of the same nature and comparable certainty may merge: a formula, a table or a
     // barely-legible fragment must never be absorbed into a neighbouring prose paragraph.
     let previous_class = classify_content(&previous.text, previous.confidence, true);
@@ -1033,15 +1079,6 @@ fn starts_new_paragraph(
     let next_rect = reading_rect(&next.region);
     let previous_centre = previous_rect[1] + previous_rect[3] / 2.0;
     let next_centre = next_rect[1] + next_rect[3] / 2.0;
-    // Two boxes at the same height, separated by no more than a word space, are one visual line cut
-    // in two — Vision splits a line wherever the type changes — and not a new paragraph. The gap is
-    // checked as well: on a two-column page whose columns were not separated, the line beside this
-    // one belongs to the other column and must never be appended to it.
-    let previous_end = previous_rect[0] + previous_rect[2];
-    let horizontal_gap = next_rect[0] - previous_end;
-    if (previous_centre - next_centre).abs() < metrics.median_height * 0.5 {
-        return !(-metrics.median_height * 0.5..=metrics.median_height).contains(&horizontal_gap);
-    }
     if (previous_centre - next_centre).abs() > metrics.median_height * 2.1 {
         return true;
     }
@@ -1056,6 +1093,32 @@ fn starts_new_paragraph(
         return true;
     }
     false
+}
+
+/// PDFKit may split a visual line wherever type or encoding changes, including a closing dash in
+/// a box of its own. Geometry outranks the fragment's punctuation-only content class.
+fn same_visual_line(
+    previous: &ExtractedBlock,
+    next: &ExtractedBlock,
+    metrics: &PageMetrics,
+) -> bool {
+    let previous_rect = reading_rect(&previous.region);
+    let next_rect = reading_rect(&next.region);
+    let previous_centre = previous_rect[1] + previous_rect[3] / 2.0;
+    let next_centre = next_rect[1] + next_rect[3] / 2.0;
+    let horizontal_gap = next_rect[0] - (previous_rect[0] + previous_rect[2]);
+    (previous_centre - next_centre).abs() < metrics.median_height * 0.5
+        && (-metrics.median_height * 0.5..=metrics.median_height).contains(&horizontal_gap)
+}
+
+fn inline_punctuation_continuation(
+    text: &ExtractedBlock,
+    punctuation: &ExtractedBlock,
+    metrics: &PageMetrics,
+) -> bool {
+    !punctuation.text.chars().any(char::is_alphanumeric)
+        && block_layout_disposition(punctuation) != Some(NarrationDisposition::Never)
+        && same_visual_line(text, punctuation, metrics)
 }
 
 fn block_layout_disposition(block: &ExtractedBlock) -> Option<NarrationDisposition> {
@@ -1283,23 +1346,78 @@ fn classify_content(text: &str, confidence: f64, geometry_reliable: bool) -> Con
     if table_of_contents_spoken_text(text).is_some() {
         return ContentClass::Prose;
     }
-    let non_text = text
-        .chars()
-        .filter(|character| !character.is_alphanumeric() && !character.is_whitespace())
-        .count();
-    if text
-        .chars()
-        .any(|character| matches!(character, '=' | '∑' | '√' | '÷' | '×'))
-        || (!text.is_empty() && non_text * 3 > text.chars().count())
-    {
-        ContentClass::Formula
-    } else if ["footnote", "nota al pie", "nota de rodapé"]
+    if ["footnote", "nota al pie", "nota de rodapé"]
         .iter()
         .any(|prefix| text.to_lowercase().starts_with(prefix))
     {
         ContentClass::Note
     } else {
         ContentClass::Prose
+    }
+}
+
+fn join_hyphenated_continuations(
+    paragraphs: &mut Vec<ReadingUnit>,
+    column_metrics: &[Option<PageMetrics>; 2],
+    column_boundary: Option<f64>,
+) {
+    let column_for = |unit: &ReadingUnit| {
+        let left = unit
+            .source_regions
+            .iter()
+            .map(|region| reading_rect(region)[0])
+            .fold(f64::INFINITY, f64::min);
+        usize::from(column_boundary.is_some_and(|boundary| left >= boundary))
+    };
+    let mut index = 0;
+    while index + 1 < paragraphs.len() {
+        let next_starts_lowercase = paragraphs[index + 1]
+            .text
+            .trim_start()
+            .chars()
+            .next()
+            .is_some_and(char::is_lowercase);
+        let column = column_for(&paragraphs[index]);
+        let same_column = column == column_for(&paragraphs[index + 1]);
+        let vertically_adjacent = column_metrics[column].as_ref().is_some_and(|metrics| {
+            let Some(previous) = paragraphs[index].source_regions.last() else {
+                return false;
+            };
+            let Some(next) = paragraphs[index + 1].source_regions.first() else {
+                return false;
+            };
+            let previous_rect = reading_rect(previous);
+            let next_rect = reading_rect(next);
+            let previous_centre = previous_rect[1] + previous_rect[3] / 2.0;
+            let next_centre = next_rect[1] + next_rect[3] / 2.0;
+            (previous_centre - next_centre).abs() <= metrics.median_height * 2.1
+        });
+        if paragraphs[index].content_class == ContentClass::Prose
+            && paragraphs[index + 1].content_class == ContentClass::Prose
+            && paragraphs[index].narration_disposition
+                == paragraphs[index + 1].narration_disposition
+            && paragraphs[index].text.trim_end().ends_with('-')
+            && next_starts_lowercase
+            && same_column
+            && vertically_adjacent
+        {
+            let tail = paragraphs.remove(index + 1);
+            let head = &mut paragraphs[index];
+            head.text = join_paragraph_text(&[head.text.clone(), tail.text.clone()]);
+            head.spoken_text =
+                join_paragraph_text(&[head.spoken_text.clone(), tail.spoken_text.clone()]);
+            head.source_regions.extend(tail.source_regions);
+            head.source_block_ids.extend(tail.source_block_ids.clone());
+            head.confidence = head.confidence.min(tail.confidence);
+            head.decision_trace.extend(tail.decision_trace);
+            head.decision_trace.push(NormalizationDecision {
+                rule: "join_hyphenated_layout_continuation".into(),
+                confidence: head.confidence,
+                affected_segments: tail.source_block_ids,
+            });
+        } else {
+            index += 1;
+        }
     }
 }
 
@@ -1462,6 +1580,130 @@ fn contains_note_callout(text: &str, numeral: &str) -> bool {
     })
 }
 
+/// Endnotes leave no citation at the foot of the current page to pair with their raised calls.
+/// Infer them only when the page contains a compact run of at least three distinct attached
+/// numerals. This excludes years (four digits), ordinary standalone quantities and isolated
+/// ambiguous suffixes; the visible text is never changed.
+fn inferred_endnote_callouts(blocks: &[ExtractedBlock]) -> (BTreeSet<String>, BTreeSet<String>) {
+    let mut values = BTreeSet::new();
+    let mut leading_blocks = BTreeSet::new();
+    for (index, block) in blocks.iter().enumerate() {
+        values.extend(attached_callouts(&block.text));
+        let Some(previous) = index.checked_sub(1).and_then(|value| blocks.get(value)) else {
+            continue;
+        };
+        let Some(numeral) = leading_inline_callout(block, previous) else {
+            continue;
+        };
+        values.insert(numeral);
+        leading_blocks.insert(block.block_id.clone());
+    }
+    let compact = values.len() >= 3
+        && values
+            .iter()
+            .filter_map(|value| value.parse::<u16>().ok())
+            .min()
+            .zip(
+                values
+                    .iter()
+                    .filter_map(|value| value.parse::<u16>().ok())
+                    .max(),
+            )
+            .is_some_and(|(minimum, maximum)| maximum - minimum <= values.len() as u16 + 1);
+    if compact {
+        (values, leading_blocks)
+    } else {
+        (BTreeSet::new(), BTreeSet::new())
+    }
+}
+
+fn attached_callouts(text: &str) -> Vec<String> {
+    let characters: Vec<char> = text.chars().collect();
+    let mut values = Vec::new();
+    let mut index = 0;
+    while index < characters.len() {
+        if !characters[index].is_ascii_digit() {
+            index += 1;
+            continue;
+        }
+        let start = index;
+        while index < characters.len() && characters[index].is_ascii_digit() {
+            index += 1;
+        }
+        if !(1..=3).contains(&(index - start)) {
+            continue;
+        }
+        if is_attached_callout(&characters, start, index) {
+            values.push(characters[start..index].iter().collect());
+        }
+    }
+    values
+}
+
+fn is_attached_callout(characters: &[char], start: usize, end: usize) -> bool {
+    let before = start.checked_sub(1).and_then(|value| characters.get(value));
+    let before_before = start.checked_sub(2).and_then(|value| characters.get(value));
+    let after = characters.get(end);
+    before.is_some_and(|character| {
+        character.is_alphabetic()
+            || matches!(character, ')' | ']')
+            || (*character == '.' && before_before.is_some_and(|value| !value.is_ascii_digit()))
+    }) && after.is_none_or(|character| !character.is_alphanumeric())
+}
+
+fn leading_inline_callout(block: &ExtractedBlock, previous: &ExtractedBlock) -> Option<String> {
+    let text = block.text.trim_start();
+    let digits = text.chars().take_while(char::is_ascii_digit).count();
+    if !(1..=3).contains(&digits)
+        || !text.chars().nth(digits).is_some_and(char::is_whitespace)
+        || !region_is_reliable(&block.region)
+        || !region_is_reliable(&previous.region)
+    {
+        return None;
+    }
+    let current = reading_rect(&block.region);
+    let prior = reading_rect(&previous.region);
+    let same_baseline = ((current[1] + current[3] / 2.0) - (prior[1] + prior[3] / 2.0)).abs()
+        < current[3].max(prior[3]) * 0.5;
+    let gap = current[0] - (prior[0] + prior[2]);
+    (same_baseline && (-prior[3] * 0.5..=prior[3]).contains(&gap))
+        .then(|| text.chars().take(digits).collect())
+}
+
+fn omit_inferred_note_callouts(text: &str, callouts: &BTreeSet<String>, leading: bool) -> String {
+    if callouts.is_empty() {
+        return text.into();
+    }
+    let characters: Vec<char> = text.chars().collect();
+    let mut output = String::with_capacity(text.len());
+    let mut index = 0;
+    while index < characters.len() {
+        if !characters[index].is_ascii_digit() {
+            output.push(characters[index]);
+            index += 1;
+            continue;
+        }
+        let start = index;
+        while index < characters.len() && characters[index].is_ascii_digit() {
+            index += 1;
+        }
+        let numeral: String = characters[start..index].iter().collect();
+        let at_leading_marker = leading
+            && characters[..start]
+                .iter()
+                .all(|character| character.is_whitespace())
+            && characters
+                .get(index)
+                .is_some_and(|character| character.is_whitespace());
+        let attached = is_attached_callout(&characters, start, index);
+        if callouts.contains(&numeral) && (attached || at_leading_marker) {
+            continue;
+        }
+        output.push_str(&numeral);
+    }
+    output.trim_start().into()
+}
+
 /// A table-of-contents title followed by a dotted leader and its destination page. The dots are
 /// navigation furniture, not mathematical notation; the visible line remains unchanged.
 fn table_of_contents_spoken_text(text: &str) -> Option<String> {
@@ -1617,8 +1859,8 @@ fn order_blocks(blocks: &mut [ExtractedBlock]) -> Option<f64> {
 fn top_down_order(left: &ExtractedBlock, right: &ExtractedBlock) -> std::cmp::Ordering {
     let left_rect = reading_rect(&left.region);
     let right_rect = reading_rect(&right.region);
-    right_rect[1]
-        .total_cmp(&left_rect[1])
+    (right_rect[1] + right_rect[3])
+        .total_cmp(&(left_rect[1] + left_rect[3]))
         .then_with(|| left_rect[0].total_cmp(&right_rect[0]))
         .then_with(|| left.block_id.cmp(&right.block_id))
 }
@@ -1666,6 +1908,60 @@ fn order_blocks_by_layout(blocks: &mut [ExtractedBlock]) {
             .cmp(&right_key)
             .then_with(|| top_down_order(left, right))
     });
+    place_drop_caps_first(blocks);
+}
+
+fn same_layout_region(left: &ExtractedBlock, right: &ExtractedBlock) -> bool {
+    has_layout_order(left)
+        && has_layout_order(right)
+        && left.physical_page_index == right.physical_page_index
+        && left.layout_order == right.layout_order
+        && left.layout_role == right.layout_role
+}
+
+fn place_drop_caps_first(blocks: &mut [ExtractedBlock]) {
+    let mut start = 0;
+    while start < blocks.len() {
+        let mut end = start + 1;
+        while end < blocks.len() && same_layout_region(&blocks[start], &blocks[end]) {
+            end += 1;
+        }
+        let regular_heights: Vec<_> = blocks[start..end]
+            .iter()
+            .filter(|block| block.text.trim().chars().count() > 1)
+            .map(|block| reading_rect(&block.region)[3])
+            .filter(|height| height.is_finite() && *height > 0.0)
+            .collect();
+        if let Some(body_height) = percentile(regular_heights, 0.5) {
+            let drop_cap = (start..end).find(|index| {
+                let block = &blocks[*index];
+                let text = block.text.trim();
+                text.chars().count() == 1
+                    && blocks[start..end]
+                        .iter()
+                        .any(|line| is_drop_cap_for(block, line, body_height))
+            });
+            if let Some(index) = drop_cap {
+                blocks[start..=index].rotate_right(1);
+            }
+        }
+        start = end;
+    }
+}
+
+fn is_drop_cap_for(drop_cap: &ExtractedBlock, line: &ExtractedBlock, body_height: f64) -> bool {
+    let text = drop_cap.text.trim();
+    let rect = reading_rect(&drop_cap.region);
+    let line_rect = reading_rect(&line.region);
+    text.chars().count() == 1
+        && text.chars().all(char::is_alphabetic)
+        && line.text.trim().chars().count() > 1
+        && body_height.is_finite()
+        && body_height > 0.0
+        && rect[3] >= body_height * 2.0
+        && rect[0] + rect[2] <= line_rect[0] + body_height
+        && rect[1] < line_rect[1] + line_rect[3]
+        && line_rect[1] < rect[1] + rect[3]
 }
 
 fn select_layout_role(group: &[ExtractedBlock]) -> Option<(LayoutRole, f64)> {
@@ -1712,11 +2008,8 @@ fn apply_layout_policy(role: LayoutRole) -> Option<(ContentClass, NarrationDispo
         }
         NarrationDisposition::Automatic => ContentClass::Prose,
         NarrationDisposition::OnDemand if role == LayoutRole::Table => ContentClass::Table,
-        NarrationDisposition::OnDemand
-            if matches!(role, LayoutRole::Formula | LayoutRole::Algorithm) =>
-        {
-            ContentClass::Formula
-        }
+        NarrationDisposition::OnDemand if role == LayoutRole::Chart => ContentClass::Chart,
+        NarrationDisposition::OnDemand if role == LayoutRole::Formula => ContentClass::Unsupported,
         NarrationDisposition::Never
             if matches!(role, LayoutRole::Footnote | LayoutRole::VisionFootnote) =>
         {

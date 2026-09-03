@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "id": "lectura-embedded-runtimes-v1",
+  "components": [
+    {
+      "id": "mlx-audio-swift-tts",
+      "kind": "file",
+      "source_root": "models",
+      "relative_path": "runtime/xcode-derived-mlx-audio-swift-v0.1.3/Build/Products/Release/mlx-audio-swift-tts",
+      "bundled_path": "Helpers/mlx-audio-swift-tts",
+      "origin_url": "https://github.com/Blaizzy/mlx-audio-swift",
+      "revision": "d302a5c6080d2bb97bae38c7418f82abb76013b6",
+      "file_count": 1,
+      "size_bytes": 67558368,
+      "sha256_hex": "dab813c46f7e757710f78106738b69ff2ced63ea0be4c510d95c7ee9a1e9913a"
+    },
+    {
+      "id": "lectura-translate-runtime",
+      "kind": "file",
+      "source_root": "models",
+      "relative_path": "runtime/xcode-derived-mlx-swift-lm-gemma3/Build/Products/Release/lectura-translate-runtime",
+      "bundled_path": "Helpers/lectura-translate-runtime",
+      "origin_url": "https://github.com/Anthropo-logics/Lectura-fluida",
+      "revision": "17442f7ea67a86069edd88e230e995836ffd3a30",
+      "file_count": 1,
+      "size_bytes": 34975008,
+      "sha256_hex": "ec95bc6a638228c5e3c40ef71fed9cbe7eb10e819e14251485e2d784fd8818e4"
+    },
+    {
+      "id": "espeak-ng",
+      "kind": "file",
+      "source_root": "espeak",
+      "relative_path": "bin/espeak-ng",
+      "bundled_path": "Helpers/espeak-ng",
+      "origin_url": "https://github.com/espeak-ng/espeak-ng",
+      "revision": "1.52.0",
+      "file_count": 1,
+      "size_bytes": 38016,
+      "sha256_hex": "8958785a5f9e97a183a7224a1abde1dd89d871eec8c634284e34fb382dc5f377"
+    },
+    {
+      "id": "libespeak-ng",
+      "kind": "file",
+      "source_root": "espeak",
+      "relative_path": "lib/libespeak-ng.1.dylib",
+      "bundled_path": "Helpers/libespeak-ng.1.dylib",
+      "origin_url": "https://github.com/espeak-ng/espeak-ng",
+      "revision": "1.52.0",
+      "file_count": 1,
+      "size_bytes": 521568,
+      "sha256_hex": "c2ea7df6f428e85467079e0bbeef3b47b327b99a6988824e7fed727f2ade0e88"
+    },
+    {
+      "id": "libpcaudio",
+      "kind": "file",
+      "source_root": "pcaudio",
+      "relative_path": "lib/libpcaudio.0.dylib",
+      "bundled_path": "Helpers/libpcaudio.0.dylib",
+      "origin_url": "https://github.com/espeak-ng/pcaudiolib",
+      "revision": "1.3",
+      "file_count": 1,
+      "size_bytes": 55088,
+      "sha256_hex": "efa6fd119b0649fe8bd26a9e8ec48c10a404464e6e3e2529d2e7d4a1944b01c6"
+    },
+    {
+      "id": "mlx-swift-cmlx-bundle",
+      "kind": "tree",
+      "source_root": "models",
+      "relative_path": "runtime/xcode-derived-mlx-swift-lm-gemma3/Build/Products/Release/mlx-swift_Cmlx.bundle",
+      "bundled_path": "Helpers/mlx-swift_Cmlx.bundle",
+      "origin_url": "https://github.com/ml-explore/mlx-swift",
+      "revision": "dc43e62d7055353c7f99fa071a4e71d29dfddc44",
+      "file_count": 7,
+      "size_bytes": 3821927,
+      "sha256_hex": "87b50c1d6131eb46cf3b6ba97d59b4d50ec1974d459202521bb66af7424fd79a"
+    },
+    {
+      "id": "swift-crypto-bundle",
+      "kind": "tree",
+      "source_root": "models",
+      "relative_path": "runtime/xcode-derived-mlx-swift-lm-gemma3/Build/Products/Release/swift-crypto_Crypto.bundle",
+      "bundled_path": "Helpers/swift-crypto_Crypto.bundle",
+      "origin_url": "https://github.com/apple/swift-crypto",
+      "revision": "47d3869a7291f085c1fb9fb1e6d3b97a793f45c6",
+      "file_count": 7,
+      "size_bytes": 4440,
+      "sha256_hex": "6d97c9381faa59eb063665d0613adcd0c6138aea985d6f1a1a6adcc3840224b2"
+    },
+    {
+      "id": "swift-transformers-bundle",
+      "kind": "tree",
+      "source_root": "models",
+      "relative_path": "runtime/xcode-derived-mlx-swift-lm-gemma3/Build/Products/Release/swift-transformers_Hub.bundle",
+      "bundled_path": "Helpers/swift-transformers_Hub.bundle",
+      "origin_url": "https://github.com/huggingface/swift-transformers",
+      "revision": "2fa33e1f5e7131a7fc64c28e6d161dcec0d24820",
+      "file_count": 8,
+      "size_bytes": 25369,
+      "sha256_hex": "2764744bfb0ef6f83d95a2c9a0e2ad176edc32e9063325d8d57b9a68838a8d20"
+    },
+    {
+      "id": "swift-nio-ssl-bundle",
+      "kind": "tree",
+      "source_root": "models",
+      "relative_path": "runtime/xcode-derived-mlx-audio-swift-v0.1.3/Build/Products/Release/swift-nio-ssl_NIOSSL.bundle",
+      "bundled_path": "Helpers/swift-nio-ssl_NIOSSL.bundle",
+      "origin_url": "https://github.com/apple/swift-nio-ssl",
+      "revision": "173cc69a058623525a58ae6710e2f5727c663793",
+      "file_count": 2,
+      "size_bytes": 1530,
+      "sha256_hex": "d3a4fa635f30f72e29fbd328e9ed7c63d8cdabf962f3910d7d043739fbd5ed21"
+    },
+    {
+      "id": "swift-nio-posix-bundle",
+      "kind": "tree",
+      "source_root": "models",
+      "relative_path": "runtime/xcode-derived-mlx-audio-swift-v0.1.3/Build/Products/Release/swift-nio_NIOPosix.bundle",
+      "bundled_path": "Helpers/swift-nio_NIOPosix.bundle",
+      "origin_url": "https://github.com/apple/swift-nio",
+      "revision": "e932d3c4d8f77433c8f7093b5ebcbf91463948a0",
+      "file_count": 2,
+      "size_bytes": 1727,
+      "sha256_hex": "5dc03631ed09386e9786571be981fd5d0e1f7f01900848f0fed319ccdaebdfac"
+    },
+    {
+      "id": "espeak-ng-data",
+      "kind": "tree",
+      "source_root": "espeak",
+      "relative_path": "share/espeak-ng-data",
+      "bundled_path": "Resources/espeak-ng-data",
+      "origin_url": "https://github.com/espeak-ng/espeak-ng",
+      "revision": "1.52.0",
+      "file_count": 513,
+      "size_bytes": 24152227,
+      "sha256_hex": "8727cb18ffb852c47a449332b324a03aa4cd7329e56d42775e93a7d3f429767f"
+    }
+  ]
+}

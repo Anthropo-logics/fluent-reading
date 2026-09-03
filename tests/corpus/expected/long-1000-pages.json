@@ -28,6 +28,29 @@
             }
           ],
           "degradation": null
+        },
+        {
+          "block_id": "long-1000-pages-block-1",
+          "order": 1,
+          "text": "Este parrafo sobre historia compara fuentes y desarrolla una conclusion clara para mantener una lectura continua.",
+          "region": [
+            0.1,
+            0.13,
+            0.8,
+            0.12
+          ],
+          "paragraphs": [
+            {
+              "paragraph_id": "long-1000-pages-paragraph-1",
+              "sentences": [
+                {
+                  "sentence_id": "long-1000-pages-sentence-1",
+                  "text": "Este parrafo sobre historia compara fuentes y desarrolla una conclusion clara para mantener una lectura continua."
+                }
+              ]
+            }
+          ],
+          "degradation": null
         }
       ]
     }

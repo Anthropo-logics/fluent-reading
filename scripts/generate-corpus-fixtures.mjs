@@ -85,7 +85,9 @@ function buildPdf({ pages, mode, rotate = false }) {
     }
     const commands = [];
     if (mode !== 'scanned') {
-      commands.push(`BT /F1 15 Tf 72 720 Td (${escapePdf(text)}) Tj ET`);
+      text.split('\n').forEach((line, index) => {
+        commands.push(`BT /F1 ${index === 0 ? 15 : 12} Tf 72 ${720 - index * 40} Td (${escapePdf(line)}) Tj ET`);
+      });
       if (mode === 'multicolumn') {
         commands.push(`BT /F1 12 Tf 310 680 Td (${escapePdf(`${text} COLUMN TWO`)}) Tj ET`);
       }
@@ -127,6 +129,15 @@ const phrases = {
   en: 'READING IN ENGLISH',
   pt: 'LEITURA CLARA E SEGURA',
 };
+const longSubjects = ['historia', 'ciencia', 'musica', 'memoria', 'lenguaje', 'ciudad', 'naturaleza', 'educacion', 'tecnologia', 'cultura'];
+const longActions = ['compara fuentes', 'ordena argumentos', 'describe cambios', 'explica causas', 'revisa pruebas', 'conecta ideas', 'plantea preguntas', 'resume hallazgos', 'analiza ejemplos', 'contrasta perspectivas'];
+const longOutcomes = ['una conclusion clara', 'un problema concreto', 'una decision razonada', 'un proceso gradual', 'una experiencia comun', 'una relacion importante', 'una propuesta verificable', 'un aprendizaje util', 'una consecuencia visible', 'una interpretacion abierta'];
+const longBody = (index) => {
+  const subject = longSubjects[index % longSubjects.length];
+  const action = longActions[Math.floor(index / longSubjects.length) % longActions.length];
+  const outcome = longOutcomes[Math.floor(index / 100) % longOutcomes.length];
+  return `Este parrafo sobre ${subject} ${action} y desarrolla ${outcome} para mantener una lectura continua.`;
+};
 const definitions = [];
 for (const language of ['es', 'en', 'pt']) {
   definitions.push({ id: `${language}-single-digital`, language, layout: 'single_column', content: 'digital', mode: 'digital' });
@@ -140,14 +151,21 @@ definitions.push({ id: 'adversarial-rotated', language: 'en', layout: 'single_co
 const entries = definitions.map((definition) => {
   const pageCount = definition.pageCount ?? 1;
   const phrase = definition.id === 'long-1000-pages' ? 'LECTURA PAGINA' : phrases[definition.language];
-  const pages = Array.from({ length: pageCount }, (_, index) => `${phrase} ${index + 1}`);
+  const pages = Array.from(
+    { length: pageCount },
+    (_, index) => definition.id === 'long-1000-pages'
+      ? `${phrase} ${index + 1}\n${longBody(index)}`
+      : `${phrase} ${index + 1}`,
+  );
   const pdf = buildPdf({ pages, mode: definition.mode, rotate: definition.rotate });
   const pdfName = `${definition.id}.pdf`;
   writeFileSync(join(documentsRoot, pdfName), pdf);
 
-  const evaluatedPages = pageCount === 1000 ? [0] : [0];
+  const evaluatedPages = [0];
   const truthBlocks = (pageIndex) => {
-    const texts = definition.mode === 'multicolumn'
+    const texts = definition.id === 'long-1000-pages'
+      ? pages[pageIndex].split('\n')
+      : definition.mode === 'multicolumn'
       ? [pages[pageIndex], `${pages[pageIndex]} COLUMN TWO`]
       : definition.mode === 'mixed'
         ? [pages[pageIndex], pages[pageIndex]]
@@ -158,6 +176,8 @@ const entries = definitions.map((definition) => {
       text,
       region: order === 0
         ? [0.1, 0.08, definition.mode === 'multicolumn' ? 0.38 : 0.8, 0.12]
+        : definition.id === 'long-1000-pages'
+          ? [0.1, 0.13, 0.8, 0.12]
         : definition.mode === 'mixed'
           ? [0.1, 0.25, 0.8, 0.12]
           : [0.51, 0.08, 0.38, 0.12],

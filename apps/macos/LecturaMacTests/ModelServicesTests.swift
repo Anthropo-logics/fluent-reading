@@ -6,6 +6,38 @@ import XCTest
 @testable import MacPlatform
 
 final class ModelServicesTests: XCTestCase {
+  func testPhoneticDataRootFollowsTheSelectedEngine() {
+    let bundle = URL(fileURLWithPath: "/Applications/LecturaFluida.app")
+    let bundledEngine = bundle.appendingPathComponent("Contents/Helpers/espeak-ng")
+    let bundledData = bundle.appendingPathComponent("Contents/Resources")
+
+    XCTAssertEqual(
+      ModelServices.phoneticDataRoot(
+        engineURL: bundledEngine, bundledEngineURL: bundledEngine,
+        bundledDataRoot: bundledData),
+      bundledData)
+    XCTAssertEqual(
+      ModelServices.phoneticDataRoot(
+        engineURL: URL(fileURLWithPath: "/opt/homebrew/bin/espeak-ng"),
+        bundledEngineURL: bundledEngine, bundledDataRoot: bundledData),
+      URL(fileURLWithPath: "/opt/homebrew/share", isDirectory: true))
+  }
+
+  func testRealGateRequiresExplicitOptInAndExistingArtifact() throws {
+    XCTAssertFalse(gateEnabled("REAL_GATE", environment: [:]))
+    XCTAssertFalse(gateEnabled("REAL_GATE", environment: ["REAL_GATE": "0"]))
+    XCTAssertTrue(gateEnabled("REAL_GATE", environment: ["REAL_GATE": "1"]))
+
+    let artifact = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: artifact) }
+    try Data().write(to: artifact)
+    XCTAssertEqual(
+      try requiredGateURL("ARTIFACT", environment: ["ARTIFACT": artifact.path]), artifact)
+    XCTAssertThrowsError(try requiredGateURL("ARTIFACT", environment: [:]))
+    XCTAssertThrowsError(
+      try requiredGateURL("ARTIFACT", environment: ["ARTIFACT": artifact.path + ".missing"]))
+  }
+
   @MainActor
   func testAudiobookExporterPublishesOrderedUnitsAndRemovesCheckpoint() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -114,6 +146,62 @@ final class ModelServicesTests: XCTestCase {
     ]
     XCTAssertTrue(
       AudiobookExporter.chapterMarks(outline: unreliableOutline, unitPages: unitPages).isEmpty)
+  }
+
+  func testChapterReaderKeepsMemoryBoundedForALargeSparseContainer() throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: url) }
+    var header = Data([0, 0, 0, 8])
+    header.append(contentsOf: Array("moov".utf8))
+    try header.write(to: url)
+    let handle = try FileHandle(forWritingTo: url)
+    try handle.truncate(atOffset: 256 * 1_024 * 1_024)
+    try handle.close()
+    let baseline = currentProcessRSSBytes()
+    let sampler = ProcessTreeSampler(
+      rootPID: ProcessInfo.processInfo.processIdentifier, interval: 0.001)
+
+    for _ in 0..<2 {
+      XCTAssertTrue(try AudiobookExporter.readChapterSamples(fromFileAt: url).isEmpty)
+    }
+
+    let peak = sampler.stop()
+    let growth = peak > baseline ? peak - baseline : 0
+    let fileBytes = try XCTUnwrap(url.resourceValues(forKeys: [.fileSizeKey]).fileSize)
+    print(
+      "STORY_8_5_MEMORY file_bytes=\(fileBytes) baseline_rss=\(baseline) peak_rss=\(peak) growth=\(growth) limit=\(64 * 1_024 * 1_024)"
+    )
+    XCTAssertEqual(fileBytes, 256 * 1_024 * 1_024)
+    XCTAssertLessThan(growth, 64 * 1_024 * 1_024)
+  }
+
+  func testChapterReaderRejectsABoxLargerThanTheFile() throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: url) }
+    var malformed = Data([0xff, 0xff, 0xff, 0xff])
+    malformed.append(contentsOf: Array("moov".utf8))
+    try malformed.write(to: url)
+
+    XCTAssertThrowsError(try AudiobookExporter.readChapterSamples(fromFileAt: url)) {
+      XCTAssertEqual($0 as? AudiobookExportError, .verificationFailed)
+    }
+  }
+
+  func testChapterReaderRejectsTruncatedTablesUnsafeOffsetsAndExcessiveCounts() throws {
+    let malformed = [
+      syntheticChapterContainer(sampleCount: 1, sizes: [], chunkOffset: 0),
+      syntheticChapterContainer(sampleCount: 1, sizes: [4], chunkOffset: .max),
+      syntheticChapterContainer(
+        sampleCount: 100_001, fixedSampleSize: 2, sizes: [], chunkOffset: 0),
+    ]
+    for data in malformed {
+      let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+      defer { try? FileManager.default.removeItem(at: url) }
+      try data.write(to: url)
+      XCTAssertThrowsError(try AudiobookExporter.readChapterSamples(fromFileAt: url)) {
+        XCTAssertEqual($0 as? AudiobookExportError, .verificationFailed)
+      }
+    }
   }
 
   @MainActor
@@ -491,6 +579,68 @@ final class ModelServicesTests: XCTestCase {
       delegate.acceptsFinalURL(URL(string: "https://huggingface.co/cache/other/config.json")))
   }
 
+  func testSecureDownloadStopsAnOversizedBodyBeforeItCompletes() async throws {
+    let body = Data(repeating: 0x41, count: 64 * 1_024)
+    ChunkedModelURLProtocol.configure(body: body, declaredLength: 1_024)
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [ChunkedModelURLProtocol.self]
+    let revision = String(repeating: "a", count: 40)
+    let source = try XCTUnwrap(
+      URL(string: "https://example.invalid/models/\(revision)/weights.safetensors"))
+
+    do {
+      _ = try await ModelPackageInstaller.secureDownload(
+        source, sizeBytes: 1_024, configuration: configuration)
+      XCTFail("An oversized transfer must stop at the declared boundary")
+    } catch {
+      XCTAssertEqual(error as? ModelInstallationError, .sizeMismatch)
+    }
+    let oversizedBytesSent = ChunkedModelURLProtocol.bytesSent
+    XCTAssertGreaterThan(oversizedBytesSent, 1_024)
+    XCTAssertLessThan(oversizedBytesSent, body.count)
+
+    let validBody = Data(repeating: 0x42, count: 1_024)
+    ChunkedModelURLProtocol.configure(body: validBody, declaredLength: validBody.count)
+    let downloaded = try await ModelPackageInstaller.secureDownload(
+      source, sizeBytes: UInt64(validBody.count), configuration: configuration)
+    defer { try? FileManager.default.removeItem(at: downloaded) }
+    XCTAssertEqual(try Data(contentsOf: downloaded), validBody)
+  }
+
+  func testSessionVerificationReusesHashUntilObservedMetadataChanges() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let package = root.appendingPathComponent("package", isDirectory: true)
+    let artifact = package.appendingPathComponent("data/voice.safetensors")
+    let manifestURL = root.appendingPathComponent("manifest.json")
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(
+      at: artifact.deletingLastPathComponent(), withIntermediateDirectories: true)
+    let payload = Data("voice-data".utf8)
+    let digest = SHA256.hash(data: payload).map { String(format: "%02x", $0) }.joined()
+    let manifest = installManifest(path: "data/voice.safetensors", payload: payload, hash: digest)
+    try payload.write(to: artifact)
+    try manifest.write(to: manifestURL)
+    let session = ModelPackageInstaller.VerificationSession()
+
+    let first = await session.verifiedPackage(
+      manifestData: manifest, packageRoot: package, manifestURL: manifestURL)
+    let cached = await session.verifiedPackage(
+      manifestData: manifest, packageRoot: package, manifestURL: manifestURL)
+    let cachedCount = await session.verificationCount()
+    XCTAssertNotNil(first)
+    XCTAssertNotNil(cached)
+    XCTAssertEqual(cachedCount, 1)
+
+    try Data("voice-dAta".utf8).write(to: artifact)
+    try FileManager.default.setAttributes(
+      [.modificationDate: Date().addingTimeInterval(2)], ofItemAtPath: artifact.path)
+    let changed = await session.verifiedPackage(
+      manifestData: manifest, packageRoot: package, manifestURL: manifestURL)
+    let changedCount = await session.verificationCount()
+    XCTAssertNil(changed)
+    XCTAssertEqual(changedCount, 2)
+  }
+
   func testModelInstallerPublishesOnlyVerifiedManifestArtifacts() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
@@ -499,7 +649,7 @@ final class ModelServicesTests: XCTestCase {
     let manifest = installManifest(path: "data/voice.safetensors", payload: payload, hash: digest)
     let result = try await ModelPackageInstaller.install(
       manifestData: manifest, containerRoot: root,
-      fetch: { _ in
+      fetch: { _, _ in
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try payload.write(to: url)
         return url
@@ -571,7 +721,7 @@ final class ModelServicesTests: XCTestCase {
         manifestData: installManifest(
           path: "data/voice.safetensors", payload: payload, hash: String(repeating: "0", count: 64)),
         containerRoot: root,
-        fetch: { _ in
+        fetch: { _, _ in
           let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
           try payload.write(to: url)
           return url
@@ -592,7 +742,7 @@ final class ModelServicesTests: XCTestCase {
     let cancelled = Task {
       try await ModelPackageInstaller.install(
         manifestData: manifest, containerRoot: root,
-        fetch: { _ in
+        fetch: { _, _ in
           try await Task.sleep(for: .seconds(30))
           throw ModelInstallationError.downloadFailed
         })
@@ -608,7 +758,7 @@ final class ModelServicesTests: XCTestCase {
 
     _ = try await ModelPackageInstaller.install(
       manifestData: manifest, containerRoot: root,
-      fetch: { _ in
+      fetch: { _, _ in
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try payload.write(to: url)
         return url
@@ -640,7 +790,7 @@ final class ModelServicesTests: XCTestCase {
 
     let installed = try await ModelPackageInstaller.install(
       manifestData: data, containerRoot: installRoot,
-      fetch: { url in
+      fetch: { url, _ in
         guard let source = sources[url] else { throw ModelInstallationError.downloadFailed }
         let temporary = FileManager.default.temporaryDirectory.appendingPathComponent(
           UUID().uuidString)
@@ -680,7 +830,7 @@ final class ModelServicesTests: XCTestCase {
 
     let installed = try await ModelPackageInstaller.install(
       manifestData: data, containerRoot: installRoot,
-      fetch: { url in
+      fetch: { url, _ in
         guard let source = sources[url] else { throw ModelInstallationError.downloadFailed }
         let temporary = FileManager.default.temporaryDirectory.appendingPathComponent(
           UUID().uuidString)
@@ -743,18 +893,19 @@ final class ModelServicesTests: XCTestCase {
 
   @MainActor
   func testNarratesTextExtractedFromRealBibliographyPDF() throws {
-    let modelRoot =
-      gateEnvironment("LECTURA_MODEL_ROOT") ?? "/Volumes/Extreme SSD/LecturaFluida-Models"
-    let pdfPath =
-      gateEnvironment("LECTURA_REAL_PDF")
-      ?? "/Users/jailiivinaibuelvasdiaz/Proyectos/academico/projects/children-of-the-state/02-literature/bibliography/sources/TH-DC/Moreno2000-fulltext.pdf"
-    guard FileManager.default.fileExists(atPath: modelRoot),
-      FileManager.default.fileExists(atPath: pdfPath)
-    else { throw XCTSkip("Real bibliography PDF and external Kokoro model are required") }
-    let document = try DocumentServices.openReadOnly(at: URL(fileURLWithPath: pdfPath))
-    let text = try XCTUnwrap(
-      DocumentServices.extractDigitalPages(from: document, pageLimit: 5)
-        .flatMap(\.blocks).map(\.text).first(where: { $0.count >= 80 }))
+    guard gateEnabled("LECTURA_REAL_RUNTIME_TEST") else {
+      throw XCTSkip("Set LECTURA_REAL_RUNTIME_TEST=1 for the real Kokoro/PDF gate")
+    }
+    let kokoro = try requiredKokoroModel()
+    let runtimeURL = try requiredKokoroRuntime(in: kokoro.root)
+    let pdfURL = try requiredGateURL("LECTURA_REAL_PDF")
+    let document = try DocumentServices.openReadOnly(at: pdfURL)
+    let text = DocumentServices.extractDigitalPages(from: document, pageLimit: 5)
+      .flatMap(\.blocks).map(\.text).joined(separator: " ")
+    guard text.count >= 80 else {
+      XCTFail("LECTURA_REAL_PDF must expose at least 80 digital text characters in five pages")
+      return
+    }
     let work = FileManager.default.temporaryDirectory.appendingPathComponent(
       "real-bibliography-narration-\(UUID().uuidString)")
     defer { try? FileManager.default.removeItem(at: work) }
@@ -766,10 +917,7 @@ final class ModelServicesTests: XCTestCase {
         runtimeId: "mlx-audio-swift", runtimeVersion: "v0.1.3",
         voiceId: "ef_dora", language: "es", rawIPA: false,
         units: [TTSUnitRequest(unitId: "real-pdf-unit", text: String(text.prefix(300)))]),
-      runtimeURL: URL(fileURLWithPath: modelRoot).appendingPathComponent(
-        "runtime/xcode-derived-mlx-audio-swift-v0.1.3/Build/Products/Release/mlx-audio-swift-tts"),
-      modelURL: URL(fileURLWithPath: modelRoot).appendingPathComponent(
-        "verified-packages/kokoro-82m-4bit/data", isDirectory: true), workRoot: work)
+      runtimeURL: runtimeURL, modelURL: kokoro.model, workRoot: work)
 
     XCTAssertEqual(result.segments.first?.unitId, "real-pdf-unit")
     XCTAssertTrue(FileManager.default.fileExists(atPath: result.audioPath))
@@ -777,20 +925,17 @@ final class ModelServicesTests: XCTestCase {
 
   @MainActor
   func testAudiobookExporterUsesRealBibliographyAndKokoroWithinNFR5() async throws {
-    guard gateEnvironment("LECTURA_EXPORT_RUNTIME_TEST") == "1" else {
+    guard gateEnabled("LECTURA_EXPORT_RUNTIME_TEST") else {
       throw XCTSkip("Set LECTURA_EXPORT_RUNTIME_TEST=1 for the bounded real export gate")
     }
-    let modelRoot =
-      gateEnvironment("LECTURA_MODEL_ROOT") ?? "/Volumes/Extreme SSD/LecturaFluida-Models"
-    let pdfPath =
-      gateEnvironment("LECTURA_REAL_PDF")
-      ?? "/Users/jailiivinaibuelvasdiaz/Proyectos/academico/projects/children-of-the-state/02-literature/bibliography/sources/TH-DC/Moreno2000-fulltext.pdf"
+    let kokoro = try requiredKokoroModel()
+    let runtimeURL = try requiredKokoroRuntime(in: kokoro.root)
+    let pdfURL = try requiredGateURL("LECTURA_REAL_PDF")
     let root = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
       .deletingLastPathComponent()
     let manifest = try ModelPackageInstaller.decodeManifest(
       Data(contentsOf: root.appendingPathComponent("models/manifests/kokoro-82m-4bit.json")))
-    let pdfURL = URL(fileURLWithPath: pdfPath)
     let document = try DocumentServices.openReadOnly(at: pdfURL)
     let source = DocumentServices.extractDigitalPages(from: document, pageLimit: 5)
       .flatMap(\.blocks).map(\.text).joined(separator: " ")
@@ -817,10 +962,7 @@ final class ModelServicesTests: XCTestCase {
         jobID: "real-export", sourceFingerprint: sha256(Data(contentsOf: pdfURL)),
         title: "Real export validation", language: "es", voiceID: "ef_dora", units: units,
         model: manifest,
-        modelURL: URL(fileURLWithPath: modelRoot).appendingPathComponent(
-          "verified-packages/kokoro-82m-4bit/data", isDirectory: true),
-        runtimeURL: URL(fileURLWithPath: modelRoot).appendingPathComponent(
-          "runtime/xcode-derived-mlx-audio-swift-v0.1.3/Build/Products/Release/mlx-audio-swift-tts"),
+        modelURL: kokoro.model, runtimeURL: runtimeURL,
         destinationURL: destination, workRoot: work.appendingPathComponent("jobs")))
 
     let elapsedMs = elapsedMilliseconds(since: started)
@@ -855,26 +997,33 @@ final class ModelServicesTests: XCTestCase {
     XCTAssertTrue(checks.values.allSatisfy { $0 })
   }
 
-  /// Story 5.9 AC1/AC3/AC4: a real, small translated export — TranslateGemma resolving each unit's
-  /// text one at a time (never pre-translating the whole batch) interleaved with real Kokoro
-  /// synthesis in the target language. Verifies the exporter actually narrates the *translation*
-  /// (not the source) and that each fragment's id traces back to its source unit.
+  /// Story 5.9 AC1/AC3/AC4/AC8: bounded real translated exports in every supported direction —
+  /// TranslateGemma resolving each unit one at a time, interleaved with real Kokoro synthesis in
+  /// the target language. Verifies that each export narrates a translation and remains playable.
   func testAudiobookExporterNarratesARealTranslationOneUnitAtATimeWithTraceableFragments()
     async throws
   {
-    guard gateEnvironment("LECTURA_EXPORT_RUNTIME_TEST") == "1" else {
+    guard gateEnabled("LECTURA_EXPORT_RUNTIME_TEST") else {
       throw XCTSkip("Set LECTURA_EXPORT_RUNTIME_TEST=1 for the bounded real export gate")
     }
-    let modelRoot =
-      gateEnvironment("LECTURA_MODEL_ROOT") ?? "/Volumes/Extreme SSD/LecturaFluida-Models"
+    let kokoro = try requiredKokoroModel()
     // Must be the copy embedded (and ad-hoc re-signed) inside the app bundle's Contents/Helpers —
     // the sandbox's temporary exception for "/" grants read access to external volumes but not
     // execute, so a raw build product on /Volumes fails Process.run() with no diagnosis worth
     // trusting. There is deliberately no computed fallback path here for the same reason
     // TranslationServicesTests requires it explicitly.
-    guard let translationRuntimePath = gateEnvironment("LECTURA_REAL_TRANSLATION_RUNTIME") else {
-      throw XCTSkip("Set LECTURA_REAL_TRANSLATION_RUNTIME to the app bundle's embedded runtime")
-    }
+    let translationRuntime = try requiredGateURL(
+      "LECTURA_REAL_TRANSLATION_RUNTIME", executable: true)
+    let kokoroRuntime = try requiredGateURL("LECTURA_REAL_KOKORO_RUNTIME", executable: true)
+    let helpers = kokoroRuntime.deletingLastPathComponent()
+    let phoneticFrontend = try requiredGateArtifact(
+      helpers.appendingPathComponent("espeak-ng"), label: "bundled eSpeak", executable: true)
+    let phoneticDataRoot = helpers.deletingLastPathComponent()
+      .appendingPathComponent("Resources", isDirectory: true)
+    let translationModel = try requiredGateArtifact(
+      kokoro.root.appendingPathComponent(
+        "verified-packages/translategemma-4b-it-4bit/data", isDirectory: true),
+      label: "TranslateGemma model data")
     let root = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
       .deletingLastPathComponent()
@@ -885,65 +1034,77 @@ final class ModelServicesTests: XCTestCase {
         contentsOf: root.appendingPathComponent(
           "models/manifests/translategemma-4b-it-4bit.json")))
 
-    // Two short, distinct Spanish sentences — small enough to keep this gate fast, long enough to
-    // catch a batch/order mixup between them.
-    let sourceUnits = [
-      AudiobookExportUnit(
-        unitID: "u1", text: "El Estado moderno reproduce desigualdades heredadas del colonialismo.",
-        anchorID: "u1"),
-      AudiobookExportUnit(
-        unitID: "u2", text: "Las políticas públicas rara vez cuestionan ese origen.", anchorID: "u2"
+    let directions: [(source: String, target: String, voice: String, texts: [String])] = [
+      (
+        "es", "en", "af_heart",
+        [
+          "El Estado moderno reproduce desigualdades heredadas del colonialismo.",
+          "Las políticas públicas rara vez cuestionan ese origen.",
+        ]
       ),
+      ("es", "pt", "pf_dora", ["La lectura cuidadosa permite comparar las fuentes."]),
+      ("en", "es", "ef_dora", ["Public institutions preserve a record of every decision."]),
+      ("en", "pt", "pf_dora", ["A reliable reader keeps the original passage available."]),
+      ("pt", "es", "ef_dora", ["A leitura contínua conserva a posição do documento."]),
+      ("pt", "en", "af_heart", ["O arquivo final mantém a ordem de cada passagem."]),
     ]
-    let translateCallCount = LockedCounter()
-    let translate: AudiobookExporter.Translate = { unit in
-      translateCallCount.increment()
-      let workRoot = FileManager.default.temporaryDirectory.appendingPathComponent(
-        "real-export-translate-\(UUID().uuidString)")
-      defer { try? FileManager.default.removeItem(at: workRoot) }
-      let result = try TranslationServices.translate(
-        TranslationRequest(
-          modelId: translationManifest.id, modelRevision: translationManifest.modelRevision,
-          runtimeId: translationManifest.runtimeId,
-          runtimeVersion: translationManifest.runtimeVersion,
-          sourceLanguage: "es", targetLanguage: "en",
-          units: [TranslationUnitRequest(unitId: unit.unitID, text: unit.text)]),
-        runtimeURL: URL(fileURLWithPath: translationRuntimePath),
-        modelURL: URL(fileURLWithPath: modelRoot).appendingPathComponent(
-          "verified-packages/translategemma-4b-it-4bit/data", isDirectory: true),
-        workRoot: workRoot)
-      guard
-        let translated = result.translatedUnits.first(where: { $0.sourceUnitIds == [unit.unitID] }
-        )
-      else { throw XCTSkip("translation produced no matching unit") }
-      return translated.translatedText
+    for direction in directions {
+      let sourceUnits = direction.texts.enumerated().map { index, text in
+        let unitID = "\(direction.source)-\(direction.target)-u\(index + 1)"
+        return AudiobookExportUnit(unitID: unitID, text: text, anchorID: unitID)
+      }
+      let translateCallCount = LockedCounter()
+      let translate: AudiobookExporter.Translate = { unit in
+        translateCallCount.increment()
+        let translationWork = FileManager.default.temporaryDirectory.appendingPathComponent(
+          "real-export-translate-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: translationWork) }
+        let result = try TranslationServices.translate(
+          TranslationRequest(
+            modelId: translationManifest.id, modelRevision: translationManifest.modelRevision,
+            runtimeId: translationManifest.runtimeId,
+            runtimeVersion: translationManifest.runtimeVersion,
+            sourceLanguage: direction.source, targetLanguage: direction.target,
+            units: [TranslationUnitRequest(unitId: unit.unitID, text: unit.text)]),
+          runtimeURL: translationRuntime, modelURL: translationModel,
+          workRoot: translationWork)
+        guard
+          let translated = result.translatedUnits.first(where: {
+            $0.sourceUnitIds == [unit.unitID]
+          })
+        else { throw XCTSkip("translation produced no matching unit") }
+        return translated.translatedText
+      }
+
+      let work = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "real-translated-export-\(direction.source)-\(direction.target)-\(UUID().uuidString)")
+      let destination = work.appendingPathComponent("real-translated.m4b")
+      try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
+      defer { try? FileManager.default.removeItem(at: work) }
+
+      let output = try await AudiobookExporter.export(
+        AudiobookExportRequest(
+          jobID: "real-translated-export", sourceFingerprint: "translated-test",
+          title: "Real translated export", language: direction.target, voiceID: direction.voice,
+          units: sourceUnits, model: voiceManifest,
+          modelURL: kokoro.model, runtimeURL: kokoroRuntime,
+          destinationURL: destination, workRoot: work.appendingPathComponent("jobs")),
+        synthesize: { request, runtimeURL, modelURL, workRoot in
+          let prepared = EngineClient.phonemizedRequest(
+            request, engineURL: phoneticFrontend, dataRoot: phoneticDataRoot)
+          return try ModelServices.synthesize(
+            prepared, runtimeURL: runtimeURL, modelURL: modelURL, workRoot: workRoot)
+        },
+        translate: translate)
+
+      XCTAssertEqual(
+        translateCallCount.value, sourceUnits.count,
+        "cada unidad \(direction.source)→\(direction.target) se traduce una vez")
+      let duration = try await AVURLAsset(url: output).load(.duration).seconds
+      XCTAssertGreaterThan(
+        duration, 0.5, "\(direction.source)→\(direction.target) debe ser audible")
+      XCTAssertTrue(FileManager.default.fileExists(atPath: output.path))
     }
-
-    let work = FileManager.default.temporaryDirectory.appendingPathComponent(
-      "real-translated-export-\(UUID().uuidString)")
-    let destination = work.appendingPathComponent("real-translated.m4b")
-    try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: work) }
-
-    let output = try await AudiobookExporter.export(
-      AudiobookExportRequest(
-        jobID: "real-translated-export", sourceFingerprint: "translated-test",
-        title: "Real translated export", language: "en", voiceID: "af_heart",
-        units: sourceUnits, model: voiceManifest,
-        modelURL: URL(fileURLWithPath: modelRoot).appendingPathComponent(
-          "verified-packages/kokoro-82m-4bit/data", isDirectory: true),
-        runtimeURL: URL(
-          fileURLWithPath: gateEnvironment("LECTURA_REAL_KOKORO_RUNTIME")
-            ?? "/Volumes/Extreme SSD/LecturaFluida-DerivedData/Build/Products/Debug/LecturaFluida.app/Contents/Helpers/mlx-audio-swift-tts"
-        ),
-        destinationURL: destination, workRoot: work.appendingPathComponent("jobs")),
-      translate: translate)
-
-    XCTAssertEqual(translateCallCount.value, 2, "cada unidad se traduce una vez, no por adelantado")
-    let asset = AVURLAsset(url: output)
-    let duration = try await asset.load(.duration).seconds
-    XCTAssertGreaterThan(duration, 0.5, "el audio exportado debe tener contenido real")
-    XCTAssertTrue(FileManager.default.fileExists(atPath: output.path))
   }
 
   /// Story 4.7 bounded resistance evidence: a real, sustained Kokoro export capped at
@@ -953,14 +1114,12 @@ final class ModelServicesTests: XCTestCase {
   /// the owner-authorized 45-minute ceiling for this session.
   @MainActor
   func testAudiobookExporterSustainedRealExportPausesAndResumesWithinBoundedCeiling() async throws {
-    guard gateEnvironment("LECTURA_EXPORT_STRESS_TEST") == "1" else {
+    guard gateEnabled("LECTURA_EXPORT_STRESS_TEST") else {
       throw XCTSkip("Set LECTURA_EXPORT_STRESS_TEST=1 for the bounded real resistance gate")
     }
-    let modelRoot =
-      gateEnvironment("LECTURA_MODEL_ROOT") ?? "/Volumes/Extreme SSD/LecturaFluida-Models"
-    let pdfPath =
-      gateEnvironment("LECTURA_REAL_PDF")
-      ?? "/Users/jailiivinaibuelvasdiaz/Proyectos/academico/projects/children-of-the-state/02-literature/bibliography/sources/TH-SL/Santos2002-fulltext.pdf"
+    let kokoro = try requiredKokoroModel()
+    let runtimeURL = try requiredKokoroRuntime(in: kokoro.root)
+    let pdfURL = try requiredGateURL("LECTURA_REAL_PDF")
     let phaseOneCapSeconds =
       Double(gateEnvironment("LECTURA_EXPORT_STRESS_PHASE1_SECONDS") ?? "") ?? (18 * 60)
     let phaseTwoCapSeconds =
@@ -970,7 +1129,6 @@ final class ModelServicesTests: XCTestCase {
       .deletingLastPathComponent()
     let manifest = try ModelPackageInstaller.decodeManifest(
       Data(contentsOf: root.appendingPathComponent("models/manifests/kokoro-82m-4bit.json")))
-    let pdfURL = URL(fileURLWithPath: pdfPath)
     let document = try DocumentServices.openReadOnly(at: pdfURL)
     let source = DocumentServices.extractDigitalPages(from: document, pageLimit: 80)
       .flatMap(\.blocks).map(\.text).joined(separator: " ")
@@ -992,16 +1150,13 @@ final class ModelServicesTests: XCTestCase {
     try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: work) }
     let sourceHash = try sha256(Data(contentsOf: pdfURL))
-    let modelURL = URL(fileURLWithPath: modelRoot).appendingPathComponent(
-      "verified-packages/kokoro-82m-4bit/data", isDirectory: true)
-    let runtimeURL = URL(fileURLWithPath: modelRoot).appendingPathComponent(
-      "runtime/xcode-derived-mlx-audio-swift-v0.1.3/Build/Products/Release/mlx-audio-swift-tts")
     let jobsRoot = work.appendingPathComponent("jobs")
 
     func request() -> AudiobookExportRequest {
       AudiobookExportRequest(
         jobID: "stress-export", sourceFingerprint: sourceHash, title: "Stress export validation",
-        language: "en", voiceID: "af_heart", units: units, model: manifest, modelURL: modelURL,
+        language: "en", voiceID: "af_heart", units: units, model: manifest,
+        modelURL: kokoro.model,
         runtimeURL: runtimeURL, destinationURL: destination, workRoot: jobsRoot)
     }
 
@@ -1095,21 +1250,46 @@ final class ModelServicesTests: XCTestCase {
     XCTAssertTrue(checks.values.allSatisfy { $0 }, "\(checks)")
   }
 
+  private func requiredKokoroModel() throws -> (root: URL, model: URL) {
+    let root = try requiredGateURL("LECTURA_MODEL_ROOT")
+    let model = try requiredGateArtifact(
+      root.appendingPathComponent("verified-packages/kokoro-82m-4bit/data", isDirectory: true),
+      label: "Kokoro model data")
+    return (root, model)
+  }
+
+  private func requiredKokoroRuntime(in root: URL) throws -> URL {
+    try requiredGateArtifact(
+      root.appendingPathComponent(
+        "runtime/xcode-derived-mlx-audio-swift-v0.1.3/Build/Products/Release/mlx-audio-swift-tts"),
+      label: "Kokoro release runtime", executable: true)
+  }
+
   @MainActor
   private func runNativeHarness(
     pdfName: String,
     forceOCR: Bool,
     extract: (PDFDocument) throws -> DigitalTextBlock
   ) async throws {
-    let modelRoot =
-      gateEnvironment("LECTURA_MODEL_ROOT") ?? "/Volumes/Extreme SSD/LecturaFluida-Models"
-    guard FileManager.default.fileExists(atPath: modelRoot) else {
-      throw XCTSkip("real Kokoro artifacts are external; set LECTURA_MODEL_ROOT")
+    guard gateEnabled("LECTURA_REAL_RUNTIME_TEST") else {
+      throw XCTSkip("Set LECTURA_REAL_RUNTIME_TEST=1 for the real Kokoro/PDF gate")
     }
+    let kokoro = try requiredKokoroModel()
+    let runtimeURL = try requiredKokoroRuntime(in: kokoro.root)
     let root = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
       .deletingLastPathComponent()
-    let pdfURL = root.appendingPathComponent("tests/corpus/documents/\(pdfName)")
+    try requiredGateArtifact(
+      root.appendingPathComponent("target/release/lectura"), label: "release lectura CLI",
+      executable: true)
+    try requiredGateArtifact(
+      root.appendingPathComponent("target/lectura-macos-worker"), label: "macOS worker",
+      executable: true)
+    try requiredGateArtifact(
+      URL(fileURLWithPath: "/opt/homebrew/bin/espeak-ng"), label: "eSpeak NG",
+      executable: true)
+    let pdfURL = try requiredGateArtifact(
+      root.appendingPathComponent("tests/corpus/documents/\(pdfName)"), label: pdfName)
     let appExtractionStarted = DispatchTime.now().uptimeNanoseconds
     let document = try DocumentServices.openReadOnly(at: pdfURL)
     let block = try extract(document)
@@ -1147,17 +1327,14 @@ final class ModelServicesTests: XCTestCase {
         modelId: "kokoro-82m-4bit", modelRevision: "e4468a460f6f70b9125a003e0adb1ab7d4904bbd",
         runtimeId: "mlx-audio-swift", runtimeVersion: "v0.1.3", voiceId: "ef_dora",
         language: "es", rawIPA: true, units: [TTSUnitRequest(unitId: "gate-a-unit", text: ipa)]),
-      runtimeURL: URL(fileURLWithPath: modelRoot).appendingPathComponent(
-        "runtime/xcode-derived-mlx-audio-swift-v0.1.3/Build/Products/Release/mlx-audio-swift-tts"),
-      modelURL: URL(fileURLWithPath: modelRoot).appendingPathComponent(
-        "verified-packages/kokoro-82m-4bit/data", isDirectory: true), workRoot: output)
+      runtimeURL: runtimeURL, modelURL: kokoro.model, workRoot: output)
     let appRuntimeMilliseconds = elapsedMilliseconds(since: appStarted)
     let appPeakRSSBytes = appMemory.stop()
     XCTAssertFalse(result.segments.isEmpty)
     XCTAssertTrue(FileManager.default.fileExists(atPath: result.audioPath))
 
     let cliMemory = ProcessTreeSampler(rootPID: ProcessInfo.processInfo.processIdentifier)
-    let cli = try synthesizeWithCLI(ipa, projectRoot: root, modelRoot: modelRoot)
+    let cli = try synthesizeWithCLI(ipa, projectRoot: root, modelRoot: kokoro.root.path)
     let cliPeakRSSBytes = cliMemory.stop()
     XCTAssertEqual(cli.value.modelId, result.modelId)
     XCTAssertEqual(cli.value.modelRevision, result.modelRevision)
@@ -1182,12 +1359,23 @@ final class ModelServicesTests: XCTestCase {
       My work’s objective is to critically engage with the structure of redistributive legal transformations in Latin America, taking as its first example Colombia. I would like to understand why it is that, given a range of social and gender neutral reforms since the early twentieth century, Colombia continues to be a country characterized by high levels of inequality in terms of resource distribution and access to jobs across gender lines. As seen in the tables below, if we compare rates of informal labor, poverty, and extreme poverty, women are above men in all categories.
       """
 
-    let chunks = ModelServices.chunks(paragraph)
+    let chunks = ModelServices.chunks(paragraph, limit: 510)
 
     XCTAssertEqual(chunks.count, 2)
     XCTAssertTrue(chunks[0].hasSuffix("gender lines."))
     XCTAssertTrue(chunks[1].hasPrefix("As seen in the tables below"))
     XCTAssertTrue(chunks.allSatisfy { $0.unicodeScalars.count <= 510 })
+  }
+
+  func testRawTextFallbackLeavesRoomForKokorosInternalPhonemization() {
+    let paragraph = """
+      Despite their interdependency, children’s and women’s issues are two dissociated chapters of international law and policy, particularly since the adoption of the Convention on the Rights of the Child by the UN General Assembly in 1989. Not only are children’s and women’s issues addressed separately, but a clear hierarchy has been established by international organisations through promoting the idea that protecting children’s rights is a lever for the social and thus the economic development of a nation.3 As UNICEF put it in its 1995 report on the State of the World’s Children:!‘It is UNICEF’s belief that the time has now come to put the needs and the rights of children at the very centre of development strategy. (. . .) The world will not solve its major problems until it learns to do a better job of protecting and investing in the physical, mental and
+      """
+
+    let chunks = ModelServices.chunks(paragraph)
+
+    XCTAssertTrue(chunks[0].hasSuffix("General Assembly in 1989."))
+    XCTAssertTrue(chunks.allSatisfy { $0.unicodeScalars.count <= 400 })
   }
 
   func testChunkFallbackNeverExceedsKokorosUnicodeScalarLimit() {
@@ -1278,10 +1466,10 @@ final class ModelServicesTests: XCTestCase {
         units: [TTSUnitRequest(unitId: "unit", text: text)]),
       runtimeURL: runtime, modelURL: model, workRoot: work)
 
-    XCTAssertEqual(result.segments.count, 2)
-    XCTAssertEqual(result.segments.map(\.segmentIndex), [0, 1])
-    XCTAssertEqual(result.segments.map(\.unitSampleOffset), [0, 2_400])
-    XCTAssertEqual(result.segments.map(\.sampleCount), [2_400, 2_400])
+    XCTAssertEqual(result.segments.count, 3)
+    XCTAssertEqual(result.segments.map(\.segmentIndex), [0, 1, 2])
+    XCTAssertEqual(result.segments.map(\.unitSampleOffset), [0, 2_400, 4_800])
+    XCTAssertEqual(result.segments.map(\.sampleCount), [2_400, 2_400, 2_400])
     XCTAssertTrue(FileManager.default.fileExists(atPath: result.audioPath))
     XCTAssertEqual(
       try FileManager.default.contentsOfDirectory(atPath: work.path).sorted(), ["narration.wav"])
@@ -1747,6 +1935,83 @@ private func writeConstantWave(
   try file.write(from: buffer)
 }
 
+private final class ChunkedModelURLProtocol: URLProtocol, @unchecked Sendable {
+  private static let lock = NSLock()
+  nonisolated(unsafe) private static var responseBody = Data()
+  nonisolated(unsafe) private static var sent = 0
+  private let stateLock = NSLock()
+  private var stopped = false
+
+  nonisolated(unsafe) private static var declaredLength = 0
+
+  static func configure(body: Data, declaredLength: Int) {
+    lock.lock()
+    responseBody = body
+    self.declaredLength = declaredLength
+    sent = 0
+    lock.unlock()
+  }
+
+  static var bytesSent: Int {
+    lock.lock()
+    defer { lock.unlock() }
+    return sent
+  }
+
+  override class func canInit(with request: URLRequest) -> Bool { true }
+  override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+  override func startLoading() {
+    let body = Self.body
+    let length = Self.length
+    guard let url = request.url,
+      let response = HTTPURLResponse(
+        url: url, statusCode: 200, httpVersion: "HTTP/1.1",
+        headerFields: ["Content-Length": "\(length)"])
+    else { return }
+    client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+    DispatchQueue.global().async { [weak self] in
+      guard let self else { return }
+      for offset in stride(from: 0, to: body.count, by: 1_024) {
+        guard !self.isStopped else { return }
+        let end = min(offset + 1_024, body.count)
+        let chunk = body.subdata(in: offset..<end)
+        Self.lock.lock()
+        Self.sent += chunk.count
+        Self.lock.unlock()
+        self.client?.urlProtocol(self, didLoad: chunk)
+        Thread.sleep(forTimeInterval: 0.001)
+      }
+      guard !self.isStopped else { return }
+      self.client?.urlProtocolDidFinishLoading(self)
+    }
+  }
+
+  override func stopLoading() {
+    stateLock.lock()
+    stopped = true
+    stateLock.unlock()
+  }
+
+  private var isStopped: Bool {
+    stateLock.lock()
+    defer { stateLock.unlock() }
+    return stopped
+  }
+
+  private static var body: Data {
+    lock.lock()
+    defer { lock.unlock() }
+    return responseBody
+  }
+
+  private static var length: Int {
+    lock.lock()
+    defer { lock.unlock() }
+    return declaredLength
+  }
+}
+
 private func sha256(_ data: Data) -> String {
   SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
 }
@@ -1774,6 +2039,47 @@ private func thermalStateName(_ state: ProcessInfo.ThermalState) -> String {
   case .critical: "critical"
   @unknown default: "unknown"
   }
+}
+
+private func currentProcessRSSBytes() -> UInt64 {
+  let process = Process()
+  process.executableURL = URL(fileURLWithPath: "/bin/ps")
+  process.arguments = ["-o", "rss=", "-p", String(ProcessInfo.processInfo.processIdentifier)]
+  let output = Pipe()
+  process.standardOutput = output
+  guard (try? process.run()) != nil else { return 0 }
+  let data = output.fileHandleForReading.readDataToEndOfFile()
+  process.waitUntilExit()
+  return UInt64(
+    String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+  ).map { $0 * 1_024 } ?? 0
+}
+
+private func syntheticChapterContainer(
+  sampleCount: UInt32, fixedSampleSize: UInt32 = 0, sizes: [UInt32], chunkOffset: UInt32
+) -> Data {
+  let hdlr = isoBox("hdlr", be32(0) + be32(0) + Data("text".utf8))
+  let mdhd = isoBox("mdhd", be32(0) + be32(0) + be32(0) + be32(600))
+  let stts = isoBox("stts", be32(0) + be32(1) + be32(sampleCount) + be32(600))
+  let stsz = isoBox(
+    "stsz",
+    be32(0) + be32(fixedSampleSize) + be32(sampleCount)
+      + sizes.reduce(into: Data()) {
+        $0.append(be32($1))
+      })
+  let stco = isoBox("stco", be32(0) + be32(1) + be32(chunkOffset))
+  return isoBox(
+    "moov",
+    isoBox("trak", isoBox("mdia", hdlr + mdhd + isoBox("minf", isoBox("stbl", stts + stsz + stco))))
+  )
+}
+
+private func isoBox(_ type: String, _ payload: Data) -> Data {
+  be32(UInt32(payload.count + 8)) + Data(type.utf8) + payload
+}
+
+private func be32(_ value: UInt32) -> Data {
+  withUnsafeBytes(of: value.bigEndian) { Data($0) }
 }
 
 private final class ProcessTreeSampler: @unchecked Sendable {

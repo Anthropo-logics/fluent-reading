@@ -3675,6 +3675,72 @@
         }
       }
     },
+    "settings.relaunch.failed.dismiss": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aceptar"
+          }
+        },
+        "pt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        }
+      }
+    },
+    "settings.relaunch.failed.message": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fluent Reading is still open. Quit and open it again to apply the selected language."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lectura Fluida sigue abierta. Ciérrala y ábrela de nuevo para aplicar el idioma seleccionado."
+          }
+        },
+        "pt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Leitura Fluída continua aberto. Feche-o e abra-o novamente para aplicar o idioma selecionado."
+          }
+        }
+      }
+    },
+    "settings.relaunch.failed.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The app couldn’t restart"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo reiniciar la aplicación"
+          }
+        },
+        "pt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível reiniciar o aplicativo"
+          }
+        }
+      }
+    },
     "settings.relaunch.title": {
       "localizations": {
         "en": {
@@ -3702,19 +3768,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "macOS decides an app’s language when it starts, so Fluent Reading has to restart to show the new one. Your preferences and the reading progress already saved are kept; the open document closes and any narration in progress stops, so you can restart later if you are in the middle of a reading."
+            "value": "macOS decides an app’s language when it starts, so Fluent Reading has to restart to show the new one. Your open document, reading position, preferences, and active narration are restored in the new language."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "macOS decide el idioma de una aplicación al arrancarla, así que Lectura Fluida tiene que reiniciarse para mostrar el nuevo. Tus preferencias y el progreso de lectura ya guardado se conservan; el documento abierto se cierra y la narración en curso se detiene, así que puedes reiniciar más tarde si estás a media lectura."
+            "value": "macOS decide el idioma de una aplicación al arrancarla, así que Lectura Fluida tiene que reiniciarse para mostrar el nuevo. El documento abierto, la posición de lectura, las preferencias y la narración activa se restauran en el nuevo idioma."
           }
         },
         "pt": {
           "stringUnit": {
             "state": "translated",
-            "value": "O macOS decide o idioma de um aplicativo ao iniciá-lo, então o Leitura Fluída precisa reiniciar para mostrar o novo. Suas preferências e o progresso de leitura já salvo são mantidos; o documento aberto é fechado e a narração em andamento é interrompida, então você pode reiniciar mais tarde se estiver no meio de uma leitura."
+            "value": "O macOS decide o idioma de um aplicativo ao iniciá-lo, então o Leitura Fluída precisa reiniciar para mostrar o novo. O documento aberto, a posição de leitura, as preferências e a narração ativa são restaurados no novo idioma."
           }
         }
       }
@@ -5409,6 +5475,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Passagem traduzida"
+          }
+        }
+      }
+    },
+    "translation.text.version": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Text"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Texto"
+          }
+        },
+        "pt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Texto"
           }
         }
       }

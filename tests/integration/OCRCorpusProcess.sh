@@ -2,7 +2,7 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
-cli="$root/target/debug/lectura"
+cli="${CARGO_TARGET_DIR:-$root/target}/debug/lectura"
 worker="$root/target/lectura-macos-worker"
 
 for language in es en pt; do

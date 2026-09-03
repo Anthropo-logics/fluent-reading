@@ -1,5 +1,9 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
+
+lectura_system_path='/usr/bin:/bin:/usr/sbin:/sbin'
+PATH="$lectura_system_path"
+export PATH
 
 source_model="${1:?usage: embed-layout-model.sh <model.mlmodelc> <app> <manifest.json>}"
 app="${2:?usage: embed-layout-model.sh <model.mlmodelc> <app> <manifest.json>}"

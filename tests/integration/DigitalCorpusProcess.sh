@@ -3,6 +3,7 @@ set -euo pipefail
 
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$project_root"
+cargo_target_dir="${CARGO_TARGET_DIR:-$project_root/target}"
 mkdir -p artifacts/story-1.4
 temporary="$(mktemp /tmp/lectura-digital-metrics.XXXXXX)"
 trap 'rm -f "$temporary"' EXIT
@@ -10,7 +11,7 @@ trap 'rm -f "$temporary"' EXIT
 while IFS=$'\t' read -r document_id language relative_pdf; do
   result="$(
     LECTURA_MACOS_WORKER="$project_root/target/lectura-macos-worker" \
-      "$project_root/target/debug/lectura" pdf process \
+      "$cargo_target_dir/debug/lectura" pdf process \
       --input "$project_root/tests/corpus/$relative_pdf" \
       --language "$language" --unit paragraph --json
   )"
@@ -18,7 +19,7 @@ while IFS=$'\t' read -r document_id language relative_pdf; do
     '{document_id: $document_id, numerator: .result.nfr6.numerator, denominator: .result.nfr6.denominator, ratio: .result.nfr6.ratio, threshold: .result.nfr6.threshold, passed: .result.nfr6.passed}' \
     <<<"$result" >>"$temporary"
 done < <(
-  jq -r '.entries[] | select(.classification.content == "digital") | [.id, .language, .file] | @tsv' \
+  jq -r '.entries[] | select(.role == "matrix" and .classification.content == "digital") | [.id, .language, .file] | @tsv' \
     tests/corpus/manifest.json
 )
 

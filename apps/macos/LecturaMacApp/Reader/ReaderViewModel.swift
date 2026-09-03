@@ -88,7 +88,9 @@ final class ReaderViewModel {
   /// interface cannot describe — an export that never starts, a recognised-text write that is only
   /// ever reported as "could not be kept". Both paths say here, in the log, what actually happened.
   private static let exportLog = Logger(subsystem: "com.lecturafluida.app", category: "writing")
-  private(set) var state: ReaderState = .empty
+  private(set) var state: ReaderState = .empty {
+    didSet { ReaderSurfaceCoordinator.shared.isReading = state == .reading }
+  }
   private(set) var document: PDFDocument?
   private(set) var pageIndex = 0
   private(set) var firstPageMilliseconds: UInt64?
@@ -128,8 +130,12 @@ final class ReaderViewModel {
   private(set) var translationRequested = false
   /// Lets the reader hold the original in view while a translation exists, to compare the two.
   private(set) var showingOriginalText = false
-  private(set) var translationStatuses: [String: TranslationUnitStatus] = [:]
-  private(set) var translationProgressState: TranslationProgressState = .idle
+  private(set) var translationStatuses: [String: TranslationUnitStatus] = [:] {
+    didSet { syncTranslationControlsVisibility() }
+  }
+  private(set) var translationProgressState: TranslationProgressState = .idle {
+    didSet { syncTranslationControlsVisibility() }
+  }
   private(set) var narrationState: NarrationState = .idle
   private(set) var narrationSkippedCount = 0
   private(set) var narrationSource: NarrationSource = .original
@@ -156,9 +162,9 @@ final class ReaderViewModel {
   /// re-deciding its language as the reader moves through it (AC5).
   @ObservationIgnored private var languagePagesLeftToSample = 0
   @ObservationIgnored private var recognisedLanguageSample = ""
-  /// Set once the reader picks a language by hand, so a voice model finishing its install later
-  /// does not overrule the choice with the document's language.
-  @ObservationIgnored private var voiceLanguageChosenByReader = false
+  /// Set once the reader picks a language or voice by hand, so later language detection or model
+  /// installation does not overrule that explicit choice.
+  @ObservationIgnored private var voiceSelectionChosenByReader = false
   @ObservationIgnored private var forcedOCRPages: Set<UInt32> = []
   /// The orientation the reader chose for a page, when the document's own `/Rotate` does not match
   /// how the page is actually printed — a landscape table set across a portrait page, a sheet fed
@@ -182,7 +188,12 @@ final class ReaderViewModel {
   private var prescannedOutline: [DocumentOutlineEntry] = []
   @ObservationIgnored private var voicePreparationTask: Task<Void, Never>?
   @ObservationIgnored private var translationPreparationTask: Task<Void, Never>?
+  @ObservationIgnored private var voiceVerificationTask: Task<Void, Never>?
+  @ObservationIgnored private var translationVerificationTask: Task<Void, Never>?
+  @ObservationIgnored private var verifiedVoiceModel: InstalledModel?
+  @ObservationIgnored private var verifiedTranslationModel: InstalledModel?
   @ObservationIgnored private var translationProgressTask: Task<Void, Never>?
+  @ObservationIgnored private var documentGeneration = 0
   private static let translationWindowSize = 5
   @ObservationIgnored private var modelStorageRoot: URL?
   @ObservationIgnored private var modelStorageHasSecurityScope = false
@@ -196,6 +207,7 @@ final class ReaderViewModel {
   @ObservationIgnored private var exportDestinationScopeURL: URL?
   @ObservationIgnored private var narrationUnits: [LFReadingUnit] = []
   @ObservationIgnored private var narrationIndex = 0
+  @ObservationIgnored private var pendingLanguageRestartState: LanguageRestartReadingState?
   #if STRESS_TEST
     @ObservationIgnored private var stressFailureInjected = false
   #endif
@@ -211,15 +223,15 @@ final class ReaderViewModel {
       return
     }
     voiceManifest = manifest
-    voicePreparationState = installedVoiceModel == nil ? .ready : .installed
-    preselectVoiceIfPossible()
+    voicePreparationState = .ready
     if let url = Bundle.main.url(forResource: "translategemma-4b-it-4bit", withExtension: "json"),
       let data = try? Data(contentsOf: url),
       let manifest = try? ModelPackageInstaller.decodeManifest(data)
     {
       translationManifest = manifest
-      translationPreparationState = installedTranslationModel == nil ? .ready : .installed
+      translationPreparationState = .ready
     }
+    refreshInstalledModels()
   }
 
   var pageCount: Int { document?.pageCount ?? 0 }
@@ -378,7 +390,7 @@ final class ReaderViewModel {
 
   func selectVoiceLanguage(_ language: String) {
     guard availableVoiceLanguages.contains(language) else { return }
-    voiceLanguageChosenByReader = true
+    voiceSelectionChosenByReader = true
     selectedVoiceLanguage = language
     if !availableVoiceIDs.contains(selectedVoiceID) { selectedVoiceID = "" }
     if !availableTranslationTargetLanguages.contains(translationTargetLanguage) {
@@ -388,6 +400,7 @@ final class ReaderViewModel {
 
   func selectVoice(_ voiceID: String) {
     guard availableVoiceIDs.contains(voiceID) else { return }
+    voiceSelectionChosenByReader = true
     selectedVoiceID = voiceID
   }
 
@@ -400,7 +413,7 @@ final class ReaderViewModel {
   /// overrules a selection the reader has not made by hand for this document.
   private func preselectVoiceIfPossible() {
     guard voicePreparationState == .installed, !availableVoiceLanguages.isEmpty else { return }
-    let identified = voiceLanguageChosenByReader ? nil : identifiedDocumentLanguage?.language
+    let identified = voiceSelectionChosenByReader ? nil : identifiedDocumentLanguage?.language
     if identified != nil || !availableVoiceLanguages.contains(selectedVoiceLanguage) {
       let systemPreferred = Locale.preferredLanguages
         .compactMap { Locale(identifier: $0).language.languageCode?.identifier }
@@ -427,19 +440,22 @@ final class ReaderViewModel {
       voicePreparationState != .downloading
     else { return }
     voicePreparationTask?.cancel()
+    voiceVerificationTask?.cancel()
     voicePreparationState = .downloading
     voicePreparationFailure = nil
     voiceCompletedBytes = 0
     voicePreparationTask = Task {
       do {
-        _ = try await ModelPackageInstaller.install(
+        let installed = try await ModelPackageInstaller.install(
           manifestData: manifestData, containerRoot: modelContainerRoot,
           progress: { [weak self] update in
             Task { @MainActor in self?.voiceCompletedBytes = update.completedBytes }
           })
+        verifiedVoiceModel = installed
         voiceCompletedBytes = voiceManifest.totalSizeBytes
         voicePreparationState = .installed
         preselectVoiceIfPossible()
+        applyPendingLanguageRestartState()
       } catch ModelInstallationError.cancelled {
         voicePreparationState = .cancelled
       } catch let error as ModelInstallationError {
@@ -498,6 +514,13 @@ final class ReaderViewModel {
     narrationSource = source
   }
 
+  func didDisplayPage(_ page: Int) {
+    guard page >= 0, page < pageCount, page != pageIndex else { return }
+    pageIndex = page
+    selectFirstUnitForCurrentPage()
+    requestPlan()
+  }
+
   /// Lets the reader choose where narration begins. Without it a book could only be listened to
   /// from wherever extraction happened to leave the anchor, forcing anyone who wanted a single
   /// chapter to sit through the front matter first.
@@ -511,6 +534,16 @@ final class ReaderViewModel {
     // exact situation in which choosing a starting point matters most. Use `selectUnit` to move the
     // anchor without reading.
     startNarration(onRequiresVoice: onRequiresVoice)
+  }
+
+  func beginReadingTranslated(at unitID: String, onRequiresVoice: () -> Void) {
+    guard case .translated = translationStatuses[unitID] else {
+      narrationState =
+        translationStatuses[unitID] == .failed ? .translationFailed : .awaitingTranslation
+      return
+    }
+    narrationSource = .translation
+    beginReading(at: unitID, onRequiresVoice: onRequiresVoice)
   }
 
   func selectUnit(_ unitID: String) {
@@ -675,9 +708,9 @@ final class ReaderViewModel {
   /// The text to show for a passage: the translation once it exists, the original until then — or
   /// always the original while the reader is comparing against it.
   func displayText(for unit: LFReadingUnit) -> String {
-    guard !showingOriginalText, case .translated(let translated) = translationStatuses[unit.unitID]
-    else { return unit.text }
-    return translated
+    TranslationServices.visibleText(
+      source: unit.text, status: translationStatuses[unit.unitID],
+      showingOriginal: showingOriginalText)
   }
 
   func isShowingTranslation(_ unit: LFReadingUnit) -> Bool {
@@ -695,7 +728,16 @@ final class ReaderViewModel {
     }
   }
 
-  func toggleShowingOriginalText() { showingOriginalText.toggle() }
+  private func syncTranslationControlsVisibility() {
+    ReaderSurfaceCoordinator.shared.translationControlsVisible =
+      translationProgressState == .translating || hasAnyTranslation
+  }
+
+  /// Changes only the visual projection. Narration has its own explicit source selector.
+  func selectVisibleText(showingOriginal: Bool) {
+    guard hasAnyTranslation else { return }
+    showingOriginalText = showingOriginal
+  }
 
   /// Translated passages of the current page, positioned over the blocks they came from, so the
   /// PDF surface shows the translation on the page itself rather than only beside it.
@@ -714,6 +756,7 @@ final class ReaderViewModel {
       let maxX = rects.map { $0.rectPDFPoints[0] + $0.rectPDFPoints[2] }.max() ?? minX
       let maxY = rects.map { $0.rectPDFPoints[1] + $0.rectPDFPoints[3] }.max() ?? minY
       return TranslatedOverlayBlock(
+        unitID: unit.unitID,
         pageIndex: pageIndex,
         rectPDFPoints: [minX, minY, maxX - minX, maxY - minY],
         text: text)
@@ -731,21 +774,40 @@ final class ReaderViewModel {
   /// `retryingFailures` is set only by `requestTranslation()`, the reader's own button: an explicit
   /// pass takes the `.failed` passages back, the automatic chaining below never does.
   func beginTranslationProgress(retryingFailures: Bool = false) {
-    guard translationRequested, !translationTargetLanguage.isEmpty,
-      let manifest = translationManifest, let installed = installedTranslationModel,
-      let runtimeURL = translationRuntimeURL,
-      translationProgressState != .translating
-    else { return }
+    guard translationRequested else { return }
+    guard translationProgressState != .translating else { return }
+    guard !translationTargetLanguage.isEmpty else {
+      failTranslationStart("target_language_missing")
+      return
+    }
+    guard let manifest = translationManifest else {
+      failTranslationStart("manifest_missing")
+      return
+    }
+    guard let installed = installedTranslationModel else {
+      failTranslationStart("verified_model_missing")
+      return
+    }
+    guard let runtimeURL = translationRuntimeURL else {
+      failTranslationStart("runtime_missing")
+      return
+    }
     // Walk the whole document, not just the page on screen: translation is meant to keep pace with
     // reading, and stopping at the page boundary left the rest of the book in the source language.
     let units = immersionStream.map(\.unit)
-    guard let currentUnitID else { return }
+    guard let currentUnitID else {
+      if retryingFailures { failTranslationStart("reading_anchor_missing") }
+      return
+    }
     let window = Set(
       TranslationServices.unitsToTranslate(
         orderedUnitIDs: units.map(\.unitID), startingAt: currentUnitID,
         statuses: translationStatuses, windowSize: Self.translationWindowSize,
         retryingFailures: retryingFailures))
-    guard !window.isEmpty else { return }
+    guard !window.isEmpty else {
+      if retryingFailures { failTranslationStart("translation_window_empty") }
+      return
+    }
 
     var pendingUnits: [TranslationUnitRequest] = []
     for unit in units where window.contains(unit.unitID) {
@@ -758,7 +820,10 @@ final class ReaderViewModel {
         translationStatuses[unit.unitID] = .nonTranslatable
       }
     }
-    guard !pendingUnits.isEmpty else { return }
+    guard !pendingUnits.isEmpty else {
+      if retryingFailures { failTranslationStart("eligible_units_missing") }
+      return
+    }
 
     translationProgressTask?.cancel()
     translationProgressState = .translating
@@ -768,6 +833,7 @@ final class ReaderViewModel {
     let workRoot = temporaryWorkRoot.appendingPathComponent(
       "temporary-translation/\(UUID().uuidString)", isDirectory: true)
     let modelURL = installed.directory.appendingPathComponent("data", isDirectory: true)
+    let generation = documentGeneration
     translationProgressTask = Task {
       let request = TranslationRequest(
         modelId: manifest.id, modelRevision: manifest.modelRevision,
@@ -780,15 +846,21 @@ final class ReaderViewModel {
           try TranslationServices.translate(
             request, runtimeURL: runtimeURL, modelURL: modelURL, workRoot: workRoot)
         }.value
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled, documentGeneration == generation else { return }
         applyTranslationResult(result, requestedUnits: pendingUnits)
       } catch {
+        guard !Task.isCancelled, documentGeneration == generation else { return }
         Self.metrics.error(
           "translation.error \(String(describing: error), privacy: .public)")
         for unit in pendingUnits { translationStatuses[unit.unitId] = .failed }
         translationProgressState = .failed
       }
     }
+  }
+
+  private func failTranslationStart(_ reason: String) {
+    Self.metrics.error("translation.start_failed reason=\(reason, privacy: .public)")
+    translationProgressState = .failed
   }
 
   /// Correspondence check (AC7): any loss or duplication fails the whole batch rather than
@@ -812,9 +884,10 @@ final class ReaderViewModel {
     }
     for failedID in result.failedUnitIds { translationStatuses[failedID] = .failed }
     translationProgressState = .idle
-    // Keep going through the page a window at a time; `beginTranslationProgress` stops by itself
-    // once every passage in reach already has a status. Deliberately without `retryingFailures`:
-    // an automatic pass that took failures back would retry a bad passage for ever.
+    applyPendingLanguageRestartState()
+    // Keep going through the document a window at a time. Automatic continuation treats a
+    // temporarily absent anchor or an exhausted window as normal completion; only the explicit
+    // reader action (`retryingFailures`) reports an inability to start.
     beginTranslationProgress()
   }
 
@@ -837,18 +910,21 @@ final class ReaderViewModel {
       translationPreparationState != .downloading
     else { return }
     translationPreparationTask?.cancel()
+    translationVerificationTask?.cancel()
     translationPreparationState = .downloading
     translationPreparationFailure = nil
     translationCompletedBytes = 0
     translationPreparationTask = Task {
       do {
-        _ = try await ModelPackageInstaller.install(
+        let installed = try await ModelPackageInstaller.install(
           manifestData: manifestData, containerRoot: modelContainerRoot,
           progress: { [weak self] update in
             Task { @MainActor in self?.translationCompletedBytes = update.completedBytes }
           })
+        verifiedTranslationModel = installed
         translationCompletedBytes = translationManifest.totalSizeBytes
         translationPreparationState = .installed
+        applyPendingLanguageRestartState()
       } catch ModelInstallationError.cancelled {
         translationPreparationState = .cancelled
       } catch let error as ModelInstallationError {
@@ -1058,6 +1134,7 @@ final class ReaderViewModel {
     let workRoot = temporaryWorkRoot.appendingPathComponent(
       "temporary-translation/\(UUID().uuidString)", isDirectory: true)
     let modelURL = installed.directory.appendingPathComponent("data", isDirectory: true)
+    let generation = documentGeneration
     Task {
       let request = TranslationRequest(
         modelId: manifest.id, modelRevision: manifest.modelRevision,
@@ -1070,8 +1147,10 @@ final class ReaderViewModel {
           try TranslationServices.translate(
             request, runtimeURL: runtimeURL, modelURL: modelURL, workRoot: workRoot)
         }.value
+        guard documentGeneration == generation else { return }
         applyTranslationResult(result, requestedUnits: [requestUnit])
       } catch {
+        guard documentGeneration == generation else { return }
         translationStatuses[unit.unitID] = .failed
       }
       completion?()
@@ -1237,48 +1316,67 @@ final class ReaderViewModel {
     if let bookmark = try? url.bookmarkData(options: .withSecurityScope) {
       UserDefaults.standard.set(bookmark, forKey: ModelStorage.bookmarkKey)
     }
-    voicePreparationState = installedVoiceModel == nil ? .ready : .installed
-    preselectVoiceIfPossible()
-    if translationManifest != nil {
-      translationPreparationState = installedTranslationModel == nil ? .ready : .installed
-    }
+    refreshInstalledModels()
   }
 
-  var installedVoiceModel: InstalledModel? {
+  var installedVoiceModel: InstalledModel? { verifiedVoiceModel }
+
+  var installedTranslationModel: InstalledModel? { verifiedTranslationModel }
+
+  private func refreshInstalledModels() {
+    refreshVoiceModel()
+    refreshTranslationModel()
+  }
+
+  private func refreshVoiceModel() {
+    voiceVerificationTask?.cancel()
+    verifiedVoiceModel = nil
+    voicePreparationState = .ready
     guard let manifest = voiceManifest,
       let manifestURL = Bundle.main.url(forResource: "kokoro-82m-4bit", withExtension: "json"),
-      let manifestData = try? Data(contentsOf: manifestURL)
-    else { return nil }
-    if let installed = ModelPackageInstaller.installedModel(
-      id: manifest.id, containerRoot: modelContainerRoot)
-    {
-      return installed
+      let manifestData = try? Data(contentsOf: manifestURL),
+      let packageRoot = installedPackageRoot(id: manifest.id)
+    else { return }
+    voiceVerificationTask = Task {
+      let verified = await ModelPackageInstaller.sessionVerifiedPackage(
+        manifestData: manifestData, packageRoot: packageRoot, manifestURL: manifestURL)
+      guard !Task.isCancelled else { return }
+      verifiedVoiceModel = verified
+      voicePreparationFailure = verified == nil ? .corruptArtifact : nil
+      voicePreparationState = verified == nil ? .failed : .installed
+      preselectVoiceIfPossible()
+      applyPendingLanguageRestartState()
     }
-    guard let modelStorageRoot else { return nil }
-    return ModelPackageInstaller.verifiedPackage(
-      manifestData: manifestData,
-      packageRoot: modelStorageRoot.appendingPathComponent(
-        "verified-packages/\(manifest.id)", isDirectory: true),
-      manifestURL: manifestURL)
   }
 
-  var installedTranslationModel: InstalledModel? {
+  private func refreshTranslationModel() {
+    translationVerificationTask?.cancel()
+    verifiedTranslationModel = nil
+    translationPreparationState = .ready
     guard let manifest = translationManifest,
       let manifestURL = Bundle.main.url(
         forResource: "translategemma-4b-it-4bit", withExtension: "json"),
-      let manifestData = try? Data(contentsOf: manifestURL)
-    else { return nil }
-    if let installed = ModelPackageInstaller.installedModel(
-      id: manifest.id, containerRoot: modelContainerRoot)
-    {
-      return installed
+      let manifestData = try? Data(contentsOf: manifestURL),
+      let packageRoot = installedPackageRoot(id: manifest.id)
+    else { return }
+    translationVerificationTask = Task {
+      let verified = await ModelPackageInstaller.sessionVerifiedPackage(
+        manifestData: manifestData, packageRoot: packageRoot, manifestURL: manifestURL)
+      guard !Task.isCancelled else { return }
+      verifiedTranslationModel = verified
+      translationPreparationFailure = verified == nil ? .corruptArtifact : nil
+      translationPreparationState = verified == nil ? .failed : .installed
+      applyPendingLanguageRestartState()
     }
+  }
+
+  private func installedPackageRoot(id: String) -> URL? {
+    let managed = modelContainerRoot.appendingPathComponent("installed/\(id)", isDirectory: true)
+    if FileManager.default.fileExists(atPath: managed.path) { return managed }
     guard let modelStorageRoot else { return nil }
-    return ModelPackageInstaller.verifiedPackage(
-      manifestData: manifestData,
-      packageRoot: modelStorageRoot.appendingPathComponent(
-        "verified-packages/\(manifest.id)", isDirectory: true),
-      manifestURL: manifestURL)
+    let external = modelStorageRoot.appendingPathComponent(
+      "verified-packages/\(id)", isDirectory: true)
+    return FileManager.default.fileExists(atPath: external.path) ? external : nil
   }
 
   /// Helper engines ship inside the app bundle. The sandbox grants read access to an external
@@ -1304,7 +1402,13 @@ final class ReaderViewModel {
   }
 
   var phoneticDataRootURL: URL {
-    Bundle.main.bundleURL.appendingPathComponent("Contents/Resources", isDirectory: true)
+    let bundledEngine = Bundle.main.bundleURL
+      .appendingPathComponent("Contents/Helpers/espeak-ng", isDirectory: false)
+    let bundledData = Bundle.main.bundleURL
+      .appendingPathComponent("Contents/Resources", isDirectory: true)
+    guard let engine = phoneticFrontendURL else { return bundledData }
+    return ModelServices.phoneticDataRoot(
+      engineURL: engine, bundledEngineURL: bundledEngine, bundledDataRoot: bundledData)
   }
 
   var voiceRuntimeURL: URL? {
@@ -1354,8 +1458,35 @@ final class ReaderViewModel {
     // the new one has been chosen: until the panel returns, nothing is closing.
     Task {
       await offerToKeepRecognisedText()
-      open(selected)
+      open(selected, restoring: nil)
     }
+  }
+
+  /// Saves only the state needed by the replacement process. Ordinary app launches never see this
+  /// path, so opening the app normally still starts with the empty reader.
+  func prepareForLanguageRestart() {
+    LanguageRestartReadingStore.clear()
+    guard let grant, let bookmark = grant.restorationBookmark(),
+      let snapshot = LanguageRestartReadingState(
+        documentBookmark: bookmark, pageIndex: pageIndex, unitID: currentUnitID,
+        readingSurface: readingSurface.rawValue, trackingUnit: trackingUnit.rawValue,
+        voiceLanguage: selectedVoiceLanguage, voiceID: selectedVoiceID,
+        narrationRate: narrationRate,
+        narrationSource: narrationSource == .translation ? "translation" : "original",
+        translationTargetLanguage: translationTargetLanguage,
+        resumesNarration: [.playing, .preparing, .awaitingContent, .awaitingTranslation].contains(
+          narrationState))
+    else { return }
+    LanguageRestartReadingStore.save(snapshot)
+  }
+
+  /// Consumes the one-shot bookmark before opening. Invalid or stale state degrades to the ordinary
+  /// empty launch and cannot trap the application in a reopen loop.
+  func restoreAfterLanguageRestart() {
+    guard state == .empty, let snapshot = LanguageRestartReadingStore.take(),
+      let restored = FileServices.restorePDF(from: snapshot.documentBookmark)
+    else { return }
+    open(restored, restoring: snapshot)
   }
 
   func chooseExportDestination() {
@@ -1600,11 +1731,15 @@ final class ReaderViewModel {
     exportDestinationScopeURL = nil
   }
 
-  private func open(_ selected: ReadAccessGrant) {
+  private func open(
+    _ selected: ReadAccessGrant, restoring snapshot: LanguageRestartReadingState?
+  ) {
     let openedAt = ContinuousClock.now
     reportingTask?.cancel()
     outlinePrescanTask?.cancel()
     languageIdentification?.cancel()
+    documentGeneration &+= 1
+    resetDocumentTranslationState()
     // Story 6.20: reading aloud belongs to the document being left, so it ends here — before the
     // new one is even read from disk, not somewhere inside the load. Everything else this function
     // clears is document state; narration is the one piece of it that keeps making noise on its
@@ -1619,7 +1754,7 @@ final class ReaderViewModel {
         grant = selected
         self.openedAt = openedAt
         self.document = document
-        pageIndex = 0
+        pageIndex = min(snapshot?.pageIndex ?? 0, max(0, document.pageCount - 1))
         firstPageMilliseconds = nil
         processingSession = nil
         processingCancelled = false
@@ -1630,10 +1765,19 @@ final class ReaderViewModel {
         #if STRESS_TEST
           readingSurface = .immersion
         #else
-          readingSurface = .pdf
+          readingSurface = snapshot.flatMap { ReadingSurface(rawValue: $0.readingSurface) } ?? .pdf
         #endif
-        trackingUnit = .paragraph
+        trackingUnit = snapshot.flatMap { TrackingUnit(rawValue: $0.trackingUnit) } ?? .paragraph
         currentUnitID = nil
+        pendingLanguageRestartState = snapshot
+        if let snapshot {
+          selectedVoiceLanguage = snapshot.voiceLanguage
+          selectedVoiceID = snapshot.voiceID
+          voiceSelectionChosenByReader = !snapshot.voiceLanguage.isEmpty
+          narrationRate = snapshot.narrationRate
+          narrationSource = snapshot.narrationSource == "translation" ? .translation : .original
+          translationTargetLanguage = snapshot.translationTargetLanguage
+        }
         exportTitle = selected.displayName
         exportDestination = nil
         exportState = .idle
@@ -1651,7 +1795,7 @@ final class ReaderViewModel {
         prescannedOutline = []
         startOutlinePrescan(for: document)
         identifiedDocumentLanguage = nil
-        voiceLanguageChosenByReader = false
+        voiceSelectionChosenByReader = false
         recognisedLanguageSample = ""
         languagePagesLeftToSample = DocumentLanguage.sampledPages
         languageIdentification = Task { await DocumentLanguage.identifyAsync(in: document) }
@@ -1660,15 +1804,28 @@ final class ReaderViewModel {
         #endif
         state = .reading
       } catch let error as DocumentOpenError {
+        pendingLanguageRestartState = nil
         grant = nil
         document = nil
         state = .failed(error)
       } catch {
+        pendingLanguageRestartState = nil
         grant = nil
         document = nil
         state = .failed(.unreadable)
       }
     }
+  }
+
+  /// Translation results belong to one document. Installed models and voices are app state and
+  /// deliberately survive this reset.
+  private func resetDocumentTranslationState() {
+    translationProgressTask?.cancel()
+    translationProgressTask = nil
+    translationRequested = false
+    showingOriginalText = false
+    translationStatuses = [:]
+    translationProgressState = .idle
   }
 
   func previousPage() {
@@ -1930,7 +2087,20 @@ final class ReaderViewModel {
     LocalStateStore.discardSessionsNamedByLaunchCounter()
     _ = try? LocalStateStore.prepare(documentID: session.documentID)
     processingSession = session
+    normalizedPages =
+      (try? LocalStateStore.loadNormalizedPages(
+        documentID: session.documentID, unit: .paragraph)) ?? [:]
+    normalizedSentencePages =
+      (try? LocalStateStore.loadNormalizedPages(
+        documentID: session.documentID, unit: .sentence)) ?? [:]
+    applyPendingLanguageRestartState()
     checkpoint(session)
+    for page in session.pages
+    where page.state == .completed
+      && (normalizedPages[page.pageIndex] == nil || normalizedSentencePages[page.pageIndex] == nil)
+    {
+      _ = await applyMutation(action: "reread", pageIndex: page.pageIndex)
+    }
     await processPendingPages()
   }
 
@@ -2017,7 +2187,8 @@ final class ReaderViewModel {
         forceOCR
         ? await grant.extractOCRPage(
           Int(page.pageIndex), language: language, rotation: rotation)
-        : await grant.extractDigitalPage(Int(page.pageIndex), rotation: rotation)
+        : await grant.extractDigitalPage(
+          Int(page.pageIndex), language: language, rotation: rotation)
       guard !Task.isCancelled, !processingCancelled else { return }
       var normalized = try? await EngineClient.normalizePage(
         raw,
@@ -2088,10 +2259,21 @@ final class ReaderViewModel {
           normalized,
           pageIndex: page.pageIndex,
           documentID: processingSession?.documentID ?? "")
+        if let sentencePage {
+          try LocalStateStore.save(
+            sentencePage,
+            pageIndex: page.pageIndex,
+            documentID: processingSession?.documentID ?? "",
+            unit: .sentence)
+        }
         processingStorageFailed = false
         normalizedPages[page.pageIndex] = normalized
         if let sentencePage { normalizedSentencePages[page.pageIndex] = sentencePage }
-        if page.pageIndex == UInt32(pageIndex), currentUnitID == nil {
+        if pendingLanguageRestartState != nil {
+          applyPendingLanguageRestartState()
+        } else if page.pageIndex == UInt32(pageIndex),
+          currentUnitID.map({ id in !normalized.units.contains { $0.unitID == id } }) ?? true
+        {
           selectFirstUnitForCurrentPage()
         }
         // Narration that ran ahead of extraction resumes as soon as any page at or beyond its
@@ -2177,5 +2359,27 @@ final class ReaderViewModel {
 
   private func selectFirstUnitForCurrentPage() {
     currentUnitID = immersionUnits.first?.unitID
+  }
+
+  private func applyPendingLanguageRestartState() {
+    guard let snapshot = pendingLanguageRestartState, !immersionUnits.isEmpty else { return }
+    currentUnitID =
+      snapshot.unitID.flatMap { wanted in immersionUnits.first { $0.unitID == wanted }?.unitID }
+      ?? immersionUnits.first?.unitID
+    guard snapshot.resumesNarration else {
+      pendingLanguageRestartState = nil
+      return
+    }
+    guard voicePreparationState == .installed else { return }
+    if narrationSource == .translation {
+      translationRequested = true
+      guard translationPreparationState == .installed else { return }
+      guard case .translated = translationStatuses[currentUnitID ?? ""] else {
+        beginTranslationProgress(retryingFailures: true)
+        return
+      }
+    }
+    pendingLanguageRestartState = nil
+    startNarration {}
   }
 }

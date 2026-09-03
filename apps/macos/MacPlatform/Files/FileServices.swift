@@ -16,14 +16,22 @@ public final class ReadAccessGrant {
 
   public var displayName: String { url.deletingPathExtension().lastPathComponent }
 
+  /// Persists the user's existing open-panel authority across the process restart required for an
+  /// interface-language change. The bookmark is never used for an ordinary launch.
+  public func restorationBookmark() -> Data? {
+    try? url.bookmarkData(
+      options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+  }
+
   /// `rotation`, when given, is the orientation the reader chose for this page: the extraction
   /// opens its own copy of the file and turns that page before reading it, so the narration
   /// follows the same axis the reader sees. The file on disk is not touched. Native layout may
   /// annotate and reorder the PDFKit blocks, but never replaces their text.
   public func extractDigitalPage(
-    _ pageIndex: Int, rotation: Int? = nil
+    _ pageIndex: Int, language: String = "en", rotation: Int? = nil
   ) async -> DigitalPageResult {
-    await DocumentServices.extractDigitalPage(at: url, pageIndex: pageIndex, rotation: rotation)
+    await DocumentServices.extractDigitalPage(
+      at: url, pageIndex: pageIndex, language: language, rotation: rotation)
   }
 
   public func extractDigitalPages(_ pageIndexes: [Int]) async -> [DigitalPageResult] {
@@ -96,6 +104,17 @@ public enum FileServices {
     panel.canChooseFiles = true
     panel.prompt = String(localized: "reader.open")
     guard panel.runModal() == .OK, let url = panel.url else { return nil }
+    return ReadAccessGrant(url: url)
+  }
+
+  public static func restorePDF(from bookmark: Data) -> ReadAccessGrant? {
+    var stale = false
+    guard
+      let url = try? URL(
+        resolvingBookmarkData: bookmark, options: [.withSecurityScope, .withoutUI], relativeTo: nil,
+        bookmarkDataIsStale: &stale),
+      url.isFileURL, url.pathExtension.lowercased() == "pdf"
+    else { return nil }
     return ReadAccessGrant(url: url)
   }
 

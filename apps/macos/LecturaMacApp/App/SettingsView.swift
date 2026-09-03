@@ -96,6 +96,7 @@ struct SettingsView: View {
     // took the ordinary quit: the app closed and never came back. Measured on both a Debug build
     // and a Release build in `/Applications`; the log now says which delegate answered.
     AppDelegate.terminationLog.notice("restart requested by the reader")
+    NotificationCenter.default.post(name: .prepareReaderLanguageRestart, object: nil)
     RestartCoordinator.shared.restartsAfterTermination = true
     NSApp.terminate(nil)
   }

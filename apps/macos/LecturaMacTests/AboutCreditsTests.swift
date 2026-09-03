@@ -10,7 +10,7 @@ final class AboutCreditsTests: XCTestCase {
   /// evaluated and discarded in Stories 1.6 and 5.1, which keep a manifest as evidence but are
   /// never bundled or downloaded by the app.
   private static let distributedManifestIDs = [
-    "kokoro-82m-4bit", "translategemma-4b-it-4bit", "kokoro-ipa-lexicons-es-pt",
+    "kokoro-82m-4bit", "translategemma-4b-it-4bit",
   ]
   private static let layoutManifestID = "pp-doclayout-v3-coreml"
 
@@ -164,7 +164,17 @@ final class AboutCreditsTests: XCTestCase {
 
     XCTAssertEqual(installed["kokoro-82m-4bit"], true)
     XCTAssertEqual(installed["translategemma-4b-it-4bit"], true)
-    XCTAssertEqual(installed["kokoro-ipa-lexicons-es-pt"], false)
+  }
+
+  func testLegacyLexiconsAreNotDistributedByTheMacApp() throws {
+    let project = try String(
+      contentsOf: Self.repositoryRoot.appendingPathComponent(
+        "apps/macos/LecturaFluida.xcodeproj/project.pbxproj"), encoding: .utf8)
+    XCTAssertFalse(project.contains("kokoro-ipa-lexicons-es-pt"))
+
+    let notice = try Self.noticeText()
+    XCTAssertTrue(notice.contains("kokoro-ipa-lexicons-es-pt"))
+    XCTAssertTrue(notice.contains("no se distribuye ni se descarga con la aplicación"))
   }
 
   /// AC2/AC3: `NOTICE` names every distributed model with the licence its manifest declares. If a
@@ -205,10 +215,15 @@ final class AboutCreditsTests: XCTestCase {
   /// signed bundle. As long as that is true, `NOTICE` has to say so — dropping the notice while
   /// still shipping the binary is the failure this guards, and it is invisible from the running app.
   func testNoticeDeclaresTheEmbeddedPhonemisationEngine() throws {
-    let script = try String(
-      contentsOf: Self.repositoryRoot.appendingPathComponent("scripts/embed-runtimes.sh"),
-      encoding: .utf8)
-    try XCTSkipUnless(script.contains("embed_espeak"), "the build no longer embeds eSpeak NG")
+    let manifestData = try Data(
+      contentsOf: Self.manifestURL("embedded-runtimes-v1"))
+    let manifest = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: manifestData) as? [String: Any])
+    let components = try XCTUnwrap(manifest["components"] as? [[String: Any]])
+    let ids = Set(components.compactMap { $0["id"] as? String })
+    XCTAssertTrue(ids.contains("espeak-ng"))
+    XCTAssertTrue(ids.contains("libespeak-ng"))
+    XCTAssertTrue(ids.contains("libpcaudio"))
 
     let notice = try Self.noticeText()
     XCTAssertTrue(notice.contains("eSpeak NG"), "NOTICE does not credit eSpeak NG")

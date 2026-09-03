@@ -5,6 +5,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
+fn temporary_with_prefix_exists(prefix: &str) -> bool {
+    fs::read_dir(std::env::temp_dir()).unwrap().any(|entry| {
+        entry
+            .ok()
+            .and_then(|entry| entry.file_name().into_string().ok())
+            .is_some_and(|name| name.starts_with(prefix))
+    })
+}
+
 fn request() -> Value {
     json!({
         "model_id": "kokoro-82m-4bit",
@@ -247,12 +256,7 @@ fn tts_synthesize_sigint_cancels_worker_and_cleans_owned_temporaries() {
         .unwrap();
     let prefix = format!("lectura-tts-cli-{}-", child.id());
     for _ in 0..100 {
-        if fs::read_dir(std::env::temp_dir()).unwrap().any(|entry| {
-            entry
-                .ok()
-                .and_then(|entry| entry.file_name().into_string().ok())
-                .is_some_and(|name| name.starts_with(&prefix))
-        }) {
+        if temporary_with_prefix_exists(&prefix) {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
@@ -267,12 +271,13 @@ fn tts_synthesize_sigint_cancels_worker_and_cleans_owned_temporaries() {
     assert_eq!(output.status.code(), Some(130));
     let event: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(event["kind"], "cancelled");
-    assert!(!fs::read_dir(std::env::temp_dir()).unwrap().any(|entry| {
-        entry
-            .ok()
-            .and_then(|entry| entry.file_name().into_string().ok())
-            .is_some_and(|name| name.starts_with(&prefix))
-    }));
+    for _ in 0..100 {
+        if !temporary_with_prefix_exists(&prefix) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(!temporary_with_prefix_exists(&prefix));
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -312,12 +317,7 @@ fn tts_synthesize_worker_death_fails_closed_and_cleans_temporaries() {
     let event: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(event["kind"], "failed");
     assert_eq!(event["error"]["code"], "LF_TTS_SYNTHESIS_FAILED");
-    assert!(!fs::read_dir(std::env::temp_dir()).unwrap().any(|entry| {
-        entry
-            .ok()
-            .and_then(|entry| entry.file_name().into_string().ok())
-            .is_some_and(|name| name.starts_with(&prefix))
-    }));
+    assert!(!temporary_with_prefix_exists(&prefix));
     fs::remove_dir_all(root).unwrap();
 }
 

@@ -25,6 +25,10 @@ struct ReaderView: View {
 
   var body: some View {
     mainContent
+      .task { model.restoreAfterLanguageRestart() }
+      .onReceive(NotificationCenter.default.publisher(for: .prepareReaderLanguageRestart)) { _ in
+        model.prepareForLanguageRestart()
+      }
       .onChange(of: model.readingSurface) { _, surface in
         AccessibilityNotification.Announcement(
           String(localized: surface == .pdf ? "reader.view.pdf" : "reader.view.immersion")
@@ -159,6 +163,10 @@ struct ReaderView: View {
   /// no reading column to theme, follow or split into sentences while the PDF is on screen.
   private var narrationCommandTriggers: some View {
     Color.clear
+      .onReceive(NotificationCenter.default.publisher(for: .setReaderVisibleTextVersion)) { note in
+        guard let raw = note.object as? String, model.state == .reading else { return }
+        model.selectVisibleText(showingOriginal: raw == "original")
+      }
       .onReceive(NotificationCenter.default.publisher(for: .seekReaderNarration)) { note in
         guard let seconds = note.object as? Double else { return }
         model.seekNarration(by: seconds)
@@ -185,7 +193,7 @@ struct ReaderView: View {
       }
       .onReceive(NotificationCenter.default.publisher(for: .resumeReaderAutoFollow)) { _ in
         guard model.readingSurface == .immersion else { return }
-        autoFollowEnabled = true
+        setAutoFollowEnabled(true)
         followRequest += 1
       }
   }
@@ -307,22 +315,6 @@ struct ReaderView: View {
       }
     }
     ToolbarItem {
-      if model.hasAnyTranslation {
-        Button(
-          model.showingOriginalText ? "translation.show.translated" : "translation.show.original",
-          systemImage: model.showingOriginalText ? "character.bubble" : "doc.text"
-        ) {
-          model.toggleShowingOriginalText()
-        }
-        .labelStyle(.iconOnly)
-        .help(
-          model.showingOriginalText
-            ? "translation.show.translated" : "translation.show.original"
-        )
-        .accessibilityIdentifier("translation.show.toggle")
-      }
-    }
-    ToolbarItem {
       overflowMenu
         .background(TutorialAnchorProbe(slot: .control(.moreMenu), registry: tutorialAnchors))
     }
@@ -330,6 +322,40 @@ struct ReaderView: View {
 
   private var readerStatusRows: some View {
     VStack(spacing: 0) {
+      if model.translationProgressState == .translating || model.hasAnyTranslation {
+        HStack(spacing: 10) {
+          Text("translation.text.version")
+          Picker(
+            "translation.text.version",
+            selection: Binding(
+              get: { model.hasAnyTranslation ? model.showingOriginalText : true },
+              set: { model.selectVisibleText(showingOriginal: $0) })
+          ) {
+            Text("narration.source.original")
+              .accessibilityIdentifier("translation.text.original")
+              .tag(true)
+            Text("narration.source.translation")
+              .accessibilityIdentifier("translation.text.translation")
+              .tag(false)
+          }
+          .labelsHidden()
+          .pickerStyle(.segmented)
+          .controlSize(.small)
+          .frame(width: 220)
+          .disabled(!model.hasAnyTranslation)
+          .accessibilityLabel("translation.text.version")
+          .accessibilityValue(
+            String(
+              localized: model.hasAnyTranslation && !model.showingOriginalText
+                ? "narration.source.translation" : "narration.source.original")
+          )
+          .accessibilityIdentifier("translation.text.version")
+          Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+      }
       if model.narrationState != .idle {
         HStack(spacing: 8) {
           Text(narrationStatusKey)
@@ -337,6 +363,11 @@ struct ReaderView: View {
             .lineLimit(1)
             .truncationMode(.tail)
             .accessibilityIdentifier("narration.status")
+            .accessibilityValue(
+              String(
+                localized: model.narrationSource == .translation
+                  ? "narration.source.translation" : "narration.source.original")
+            )
           if model.narrationSkippedCount > 0 {
             Text("narration.skipped")
               .foregroundStyle(.secondary)
@@ -381,7 +412,7 @@ struct ReaderView: View {
         .padding(.bottom, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
       }
-      if let session = model.processingSession, model.readingSurface == .pdf {
+      if let session = model.processingSession {
         processingBanner(session)
       }
       Divider()
@@ -400,20 +431,14 @@ struct ReaderView: View {
       // A page printed sideways with nothing in the file to say so: the reader turns it, and both
       // the page on screen and the order it is read aloud in follow (Story 6.15).
       if model.readingSurface == .pdf {
-        // The shortcut written here only *draws* the ⌘] beside the item — a key equivalent
-        // declared inside the content of a SwiftUI `Menu` is never registered, so pressing it did
-        // nothing until the same two commands were added to the menu bar (`menu.reading` in
-        // `LecturaFluidaApp`), which is where the working shortcut lives. Kept because the glyph
-        // is how a reader who opens this menu learns the shortcut exists.
+        // Keyboard equivalents live once in the app's Reading menu.
         Button("reader.rotate.clockwise", systemImage: "rotate.right") {
           model.rotateCurrentPage(clockwise: true)
         }
-        .keyboardShortcut("]", modifiers: [.command])
         .accessibilityIdentifier("reader.rotate.clockwise")
         Button("reader.rotate.counterclockwise", systemImage: "rotate.left") {
           model.rotateCurrentPage(clockwise: false)
         }
-        .keyboardShortcut("[", modifiers: [.command])
         .accessibilityIdentifier("reader.rotate.counterclockwise")
         Divider()
       }
@@ -490,12 +515,25 @@ struct ReaderView: View {
   private func processingBanner(_ session: LFIncrementalSessionResult) -> some View {
     HStack(spacing: 10) {
       if let page = model.failedPages.first {
-        Image(systemName: "exclamationmark.triangle")
-          .foregroundStyle(.orange)
-        Text("reader.processing.page_failed")
-          .lineLimit(1)
-        Button("reader.processing.retry") { model.retryPage(page.pageIndex) }
-          .accessibilityIdentifier("reader.processing.retry.\(page.pageIndex)")
+        VStack(alignment: .leading, spacing: 6) {
+          Label("reader.processing.page_failed", systemImage: "exclamationmark.triangle")
+            .foregroundStyle(.orange)
+            .lineLimit(1)
+          HStack(spacing: 8) {
+            Button("reader.processing.retry") { model.retryPage(page.pageIndex) }
+              .accessibilityLabel("reader.processing.retry")
+              .accessibilityValue("\(page.pageIndex + 1)")
+              .accessibilityIdentifier("reader.processing.retry.\(page.pageIndex)")
+            Button("reader.processing.skip") { model.skipPage(page.pageIndex) }
+              .accessibilityLabel("reader.processing.skip")
+              .accessibilityValue("\(page.pageIndex + 1)")
+              .accessibilityIdentifier("reader.processing.skip.\(page.pageIndex)")
+            Button("reader.processing.force_ocr") { model.forceOCRPage(page.pageIndex) }
+              .accessibilityLabel("reader.processing.force_ocr")
+              .accessibilityValue("\(page.pageIndex + 1)")
+              .accessibilityIdentifier("reader.processing.force_ocr.\(page.pageIndex)")
+          }
+        }
       } else {
         ProgressView(value: model.processingProgress)
           .frame(maxWidth: 180)
@@ -512,10 +550,14 @@ struct ReaderView: View {
       Spacer(minLength: 8)
       Menu("reader.processing.details") {
         ForEach(session.pages, id: \.pageIndex) { page in
-          Text("\(page.pageIndex + 1): ") + Text(LocalizedStringKey(page.state.nameKey))
+          (Text("\(page.pageIndex + 1): ") + Text(LocalizedStringKey(page.state.nameKey)))
+            .accessibilityValue("\(page.pageIndex + 1)")
+            .accessibilityIdentifier(
+              "reader.processing.page.\(page.pageIndex).\(page.state.rawValue)")
         }
       }
       .fixedSize()
+      .accessibilityIdentifier("reader.processing.details")
       if !model.processingCancelled {
         Button("reader.processing.cancel") { model.cancelProcessing() }
           .accessibilityIdentifier("reader.processing.cancel")
@@ -612,6 +654,10 @@ struct ReaderView: View {
               startReadingAt: { point, page in
                 model.beginReading(atPagePoint: point, onPage: page) { showingVoice = true }
               },
+              startReadingTranslatedUnit: { unitID in
+                model.beginReadingTranslated(at: unitID) { showingVoice = true }
+              },
+              visiblePageChanged: { model.didDisplayPage($0) },
               translatedBlocks: model.translatedOverlayBlocks,
               pageRotations: model.pageRotationOverrides,
               isVisible: model.readingSurface == .pdf
@@ -691,7 +737,7 @@ struct ReaderView: View {
           proxy.scrollTo(unitID, anchor: .center)
         }
         .onScrollPhaseChange { _, phase in
-          if phase == .interacting { autoFollowEnabled = false }
+          if phase == .interacting { setAutoFollowEnabled(false) }
         }
       }
     }
@@ -715,11 +761,16 @@ struct ReaderView: View {
       ForEach(ImmersionTheme.allCases) { theme in Text(theme.label).tag(theme) }
     }
     Button("reader.follow.resume", systemImage: "scope") {
-      autoFollowEnabled = true
+      setAutoFollowEnabled(true)
       followRequest += 1
     }
     .disabled(autoFollowEnabled)
     .accessibilityIdentifier("reader.follow.resume")
+  }
+
+  private func setAutoFollowEnabled(_ enabled: Bool) {
+    autoFollowEnabled = enabled
+    ReaderSurfaceCoordinator.shared.autoFollowEnabled = enabled
   }
 
   private var voicePreparationSheet: some View {
@@ -835,6 +886,7 @@ struct ReaderView: View {
     }
     .padding(28)
     .frame(minWidth: 560, idealWidth: 620)
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("voice.sheet")
   }
 
@@ -968,6 +1020,7 @@ struct ReaderView: View {
     }
     .padding(28)
     .frame(minWidth: 560, idealWidth: 620)
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("translation.sheet")
   }
 
@@ -1083,6 +1136,7 @@ struct ReaderView: View {
     }
     .padding(28)
     .frame(minWidth: 540)
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("export.sheet")
   }
 
@@ -1119,6 +1173,7 @@ struct ReaderView: View {
     }
     .padding(28)
     .frame(minWidth: 560, idealWidth: 620, minHeight: 420, idealHeight: 560)
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("help.sheet")
   }
 
@@ -1388,18 +1443,19 @@ struct ReaderView: View {
               .background(Capsule().fill(readingPulse.opacity(0.16)))
               .foregroundStyle(.secondary)
               .padding(.trailing, 6)
-              .accessibilityLabel("translation.badge")
+              .accessibilityHidden(true)
           }
         }
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
-          model.beginReading(at: unit.unitID) { showingVoice = true }
+          beginReading(unit, translated: translated)
         }
         .onTapGesture { model.selectUnit(unit.unitID) }
         .help("reader.immersion.start_here")
+        .accessibilityValue(translated ? String(localized: "translation.badge") : "")
         .accessibilityAddTraits(active ? .isSelected : [])
         .accessibilityAction(named: Text("reader.immersion.start_here")) {
-          model.beginReading(at: unit.unitID) { showingVoice = true }
+          beginReading(unit, translated: translated)
         }
         .accessibilityIdentifier("reader.immersion.unit.\(unit.unitID)")
     } else {
@@ -1407,6 +1463,14 @@ struct ReaderView: View {
         .font(.footnote)
         .foregroundStyle(.secondary)
         .accessibilityIdentifier("reader.immersion.degraded.\(unit.unitID)")
+    }
+  }
+
+  private func beginReading(_ unit: LFReadingUnit, translated: Bool) {
+    if translated {
+      model.beginReadingTranslated(at: unit.unitID) { showingVoice = true }
+    } else {
+      model.beginReading(at: unit.unitID) { showingVoice = true }
     }
   }
 

@@ -10,6 +10,8 @@ struct PDFReaderView: NSViewRepresentable {
   /// Double-clicking a passage on the page starts reading there, mirroring the same gesture in the
   /// immersion view so the choice of starting point does not depend on which surface is open.
   var startReadingAt: ((CGPoint, Int) -> Void)?
+  var startReadingTranslatedUnit: ((String) -> Void)?
+  var visiblePageChanged: ((Int) -> Void)?
   /// Translated passages to lay over the page in place of their source blocks.
   var translatedBlocks: [TranslatedOverlayBlock] = []
   /// Orientations the reader chose by hand for particular pages (Story 6.15).
@@ -44,6 +46,10 @@ struct PDFReaderView: NSViewRepresentable {
   func makeNSView(context: Context) -> PDFView {
     let view = ReadOnlyPDFView()
     view.onDoubleClickPagePoint = { [startReadingAt] point, page in startReadingAt?(point, page) }
+    view.onDoubleClickTranslatedUnit = { [startReadingTranslatedUnit] unitID, _ in
+      startReadingTranslatedUnit?(unitID)
+    }
+    view.onVisiblePageChange = { [visiblePageChanged] page in visiblePageChanged?(page) }
     view.autoScales = true
     view.displayMode = .singlePage
     view.displayDirection = .vertical
@@ -67,14 +73,14 @@ struct PDFReaderView: NSViewRepresentable {
 
   func updateNSView(_ view: PDFView, context: Context) {
     view.isHidden = !isVisible
-    // `documentView` is PDFKit's own scroll content view; it is created lazily once `view` is
-    // actually installed in a window, so it is still nil in `makeNSView` when `.document` is
-    // first assigned there. Re-applying here, after layout, is what makes the identifier appear
-    // in the accessibility tree at all — setting it only in `makeNSView` left it silently unset.
-    view.documentView?.setAccessibilityIdentifier("reader.document")
-    view.documentView?.setAccessibilityLabel(String(localized: "reader.document"))
     (view as? ReadOnlyPDFView)?.onDoubleClickPagePoint = { [startReadingAt] point, page in
       startReadingAt?(point, page)
+    }
+    (view as? ReadOnlyPDFView)?.onDoubleClickTranslatedUnit = {
+      [startReadingTranslatedUnit] unitID, _ in startReadingTranslatedUnit?(unitID)
+    }
+    (view as? ReadOnlyPDFView)?.onVisiblePageChange = { [visiblePageChanged] page in
+      visiblePageChanged?(page)
     }
     if view.document !== document { view.document = document }
     if context.coordinator.appliedRotations != pageRotations {

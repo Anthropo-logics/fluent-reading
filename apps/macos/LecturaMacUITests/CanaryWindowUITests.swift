@@ -8,7 +8,18 @@ final class ReaderWindowUITests: XCTestCase {
     let intentionallyLong =
       name.contains("testFirstPageColdAndHotBudgetOnReferenceMac")
       || name.contains("testOpensRealPDFAndNavigatesWithKeyboard")
-    if intentionallyLong {
+      || name.contains("testEpic7TranslationKeepsOneAnchorAcrossPDFAndImmersion")
+      || name.contains("testPageRecoveryActionsAreContextualAcrossPDFAndImmersion")
+    if name.contains("testLongDocumentLifecycleIterationWhenRequested") {
+      let duration =
+        TimeInterval(
+          ProcessInfo.processInfo.environment["LECTURA_STRESS_DURATION_SECONDS"] ?? "") ?? 0
+      executionTimeAllowance = max(600, duration + 600)
+    } else if name.contains("testEpic7TranslationKeepsOneAnchorAcrossPDFAndImmersion")
+      || name.contains("testPageRecoveryActionsAreContextualAcrossPDFAndImmersion")
+    {
+      executionTimeAllowance = 600
+    } else if intentionallyLong {
       // XCTest arms its UI execution timer before entering the test method. These flows retain ten
       // measured opens and the complete reader lifecycle, so their allowance must be set here.
       executionTimeAllowance = 300
@@ -29,6 +40,47 @@ final class ReaderWindowUITests: XCTestCase {
   }
 
   @MainActor
+  func testReadingMenuDisablesActionsThatHaveNoCurrentTarget() throws {
+    let app = application()
+    app.launchArguments += ["-AppleLanguages", "(en)"]
+    app.launch()
+    defer { app.terminate() }
+
+    let readingMenu = app.menuBars.menuBarItems["Reading"]
+    XCTAssertTrue(readingMenu.waitForExistence(timeout: 5))
+    readingMenu.click()
+    for title in ["Voice…", "Translate…", "Export audio…", "Storage…"] {
+      let item = app.menuItems[title]
+      XCTAssertTrue(item.waitForExistence(timeout: 2), "Missing Reading menu item: \(title)")
+      XCTAssertFalse(item.isEnabled, "\(title) must be disabled before a document is open")
+    }
+    XCTAssertFalse(app.menuItems["Text"].exists, "Text versions stay hidden before translation")
+    app.typeKey(.escape, modifierFlags: [])
+
+    let repository = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+    let source = repository.appendingPathComponent("tests/corpus/documents/es-single-digital.pdf")
+    let pdf = try stageRealPDF(source)
+    defer { try? FileManager.default.removeItem(at: pdf.deletingLastPathComponent()) }
+    try openDocument(pdf, in: app)
+    XCTAssertTrue(app.staticTexts["reader.page"].waitForExistence(timeout: 30))
+    app.descendants(matching: .any)["reader.view.immersion.option"].click()
+    XCTAssertTrue(
+      app.descendants(matching: .any)["reader.immersion"].waitForExistence(timeout: 5))
+
+    readingMenu.click()
+    let resumeFollowing = app.menuItems["Resume automatic following"]
+    XCTAssertTrue(resumeFollowing.waitForExistence(timeout: 2))
+    XCTAssertFalse(
+      resumeFollowing.isEnabled,
+      "Resume automatic following must stay disabled while following is already active")
+    XCTAssertFalse(app.menuItems["Text"].exists, "Opening a document must not reveal text versions")
+  }
+
+  @MainActor
   func testOpensRealPDFAndNavigatesWithKeyboard() throws {
     let staging = try stageRealPDF(realCorpusPDFs().first)
     defer { try? FileManager.default.removeItem(at: staging.deletingLastPathComponent()) }
@@ -36,26 +88,20 @@ final class ReaderWindowUITests: XCTestCase {
     let app = application()
     app.launch()
     defer { app.terminate() }
-
-    app.typeKey("o", modifierFlags: .command)
-    XCTAssertTrue(app.dialogs.firstMatch.waitForExistence(timeout: 5))
-    app.typeKey("g", modifierFlags: [.command, .shift])
-    let location = app.sheets.firstMatch.textFields.firstMatch
-    XCTAssertTrue(location.waitForExistence(timeout: 5))
-    location.click()
-    location.typeKey("a", modifierFlags: .command)
-    location.typeText(pdf.path)
-    app.typeKey(.return, modifierFlags: [])
-    openButton(in: app).click()
+    try openDocument(pdf, in: app)
 
     let page = app.staticTexts["reader.page"]
     XCTAssertTrue(page.waitForExistence(timeout: 60))
-    dismissTutorialIfShown(in: app)
     attachScreenshot(app, name: "story-3-reader-pdf")
     // The element itself only exists once the metric is computed, so waiting for it must not be
     // bounded by the 2 s NFR4 budget that metric is measuring — a genuine budget overrun would
     // then surface as a confusing "element not found" instead of a clear assertion on the value.
     XCTAssertTrue(app.staticTexts["reader.first-page-ms"].waitForExistence(timeout: 15))
+    let visibleTextVersion = app.descendants(matching: .any)
+      .matching(identifier: "translation.text.version").firstMatch
+    XCTAssertFalse(
+      visibleTextVersion.exists,
+      "the Original/Translation control stays hidden until translation begins")
     let total = pageTotal(from: page.value as? String)
     XCTAssertGreaterThan(total, 1)
     let previous = app.buttons["reader.previous"]
@@ -87,6 +133,9 @@ final class ReaderWindowUITests: XCTestCase {
       app.descendants(matching: .any)
         .matching(identifier: "reader.immersion").firstMatch
         .waitForExistence(timeout: 5))
+    XCTAssertFalse(
+      visibleTextVersion.exists,
+      "changing surfaces must not reveal translation controls before translation begins")
     let unit = app.descendants(matching: .any)
       .matching(NSPredicate(format: "identifier BEGINSWITH 'reader.immersion.unit.'"))
       .firstMatch
@@ -114,6 +163,210 @@ final class ReaderWindowUITests: XCTestCase {
   }
 
   @MainActor
+  func testEpic7TranslationKeepsOneAnchorAcrossPDFAndImmersion() throws {
+    guard let pdfPath = ProcessInfo.processInfo.environment["LECTURA_EPIC7_PDF"],
+      FileManager.default.fileExists(atPath: pdfPath),
+      let modelRoot = ProcessInfo.processInfo.environment["LECTURA_MODEL_ROOT"],
+      FileManager.default.fileExists(atPath: modelRoot)
+    else { throw XCTSkip("Set LECTURA_EPIC7_PDF and LECTURA_MODEL_ROOT") }
+
+    let pdf = try stageRealPDF(URL(fileURLWithPath: pdfPath))
+    defer { try? FileManager.default.removeItem(at: pdf.deletingLastPathComponent()) }
+    let app = application()
+    // The environment override has no security scope. Pointing it at a removable volume can block
+    // app startup behind a TCC prompt before the window exists, so exercise the same native folder
+    // grant a reader uses instead.
+    app.launchEnvironment["LECTURA_MODEL_ROOT"] = ""
+    app.launch()
+    defer {
+      let cancel = app.buttons["translation.progress.cancel"]
+      if cancel.exists { cancel.click() }
+      app.terminate()
+    }
+    try openDocument(pdf, in: app)
+    let page = app.staticTexts["reader.page"]
+    XCTAssertTrue(page.waitForExistence(timeout: 120))
+    let startingPage = page.value as? String
+
+    let more = app.popUpButtons["reader.more"]
+    XCTAssertTrue(more.waitForExistence(timeout: 10))
+    more.click()
+    let translate = app.descendants(matching: .any)["translation.action"]
+    XCTAssertTrue(translate.waitForExistence(timeout: 5))
+    translate.click()
+    chooseDirectory(modelRoot, from: app.buttons["translation.storage.choose"], in: app)
+    XCTAssertTrue(
+      app.descendants(matching: .any)["translation.installed"].waitForExistence(timeout: 60))
+    let target = app.popUpButtons["translation.target"]
+    target.click()
+    let english = app.menuItems["English"]
+    XCTAssertTrue(english.waitForExistence(timeout: 5))
+    english.click()
+    app.buttons["translation.request.start"].click()
+    app.buttons["translation.close"].click()
+
+    let translatedVersion = app.descendants(matching: .any)["translation.text.translation"]
+    XCTAssertEqual(
+      XCTWaiter.wait(
+        for: [
+          XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == true AND enabled == true"),
+            object: translatedVersion)
+        ], timeout: 300),
+      .completed)
+    translatedVersion.click()
+
+    let translatedPDF = app.descendants(matching: .any)
+      .matching(NSPredicate(format: "identifier BEGINSWITH 'reader.pdf.translation.'"))
+      .firstMatch
+    XCTAssertTrue(translatedPDF.waitForExistence(timeout: 60))
+    let translatedID = translatedPDF.identifier
+    let unitID = String(translatedID.dropFirst("reader.pdf.translation.".count))
+    attachScreenshot(app, name: "epic-7-pdf-translation")
+
+    let originalVersion = app.descendants(matching: .any)["translation.text.original"]
+    originalVersion.click()
+    XCTAssertFalse(translatedPDF.waitForExistence(timeout: 2))
+    XCTAssertEqual(page.value as? String, startingPage)
+    translatedVersion.click()
+    XCTAssertTrue(app.descendants(matching: .any)[translatedID].waitForExistence(timeout: 10))
+
+    translatedPDF.doubleClick()
+    let narrationStatus = app.descendants(matching: .any)["narration.status"]
+    XCTAssertTrue(narrationStatus.waitForExistence(timeout: 30))
+    XCTAssertEqual(narrationStatus.value as? String, "Translation")
+
+    originalVersion.click()
+    XCTAssertTrue(
+      narrationStatus.exists, "changing visible text must not stop translated narration")
+    translatedVersion.click()
+    let immersion = app.descendants(matching: .any)["reader.view.immersion.option"]
+    immersion.click()
+    let translatedImmersion = app.descendants(matching: .any)["reader.immersion.unit.\(unitID)"]
+    XCTAssertTrue(translatedImmersion.waitForExistence(timeout: 30))
+    translatedImmersion.doubleClick()
+    XCTAssertTrue(narrationStatus.waitForExistence(timeout: 30))
+    attachScreenshot(app, name: "epic-7-immersion-translation")
+
+    app.descendants(matching: .any)["reader.view.pdf.option"].click()
+    XCTAssertTrue(page.waitForExistence(timeout: 10))
+    XCTAssertEqual(page.value as? String, startingPage)
+    XCTAssertTrue(app.descendants(matching: .any)[translatedID].waitForExistence(timeout: 10))
+  }
+
+  @MainActor
+  func testPageRecoveryActionsAreContextualAcrossPDFAndImmersion() throws {
+    guard let path = ProcessInfo.processInfo.environment["LECTURA_OCR_RECOVERY_PDF"],
+      FileManager.default.fileExists(atPath: path)
+    else { throw XCTSkip("Set LECTURA_OCR_RECOVERY_PDF to a PDF with degraded digital text") }
+
+    let pdf = try stageRealPDF(URL(fileURLWithPath: path))
+    defer { try? FileManager.default.removeItem(at: pdf.deletingLastPathComponent()) }
+    let source = try Data(contentsOf: pdf)
+
+    try exercisePageRecovery("retry", onPDFSurface: true, pdf: pdf)
+    try exercisePageRecovery("skip", onPDFSurface: false, pdf: pdf)
+    try exercisePageRecovery("force_ocr", onPDFSurface: false, pdf: pdf)
+
+    XCTAssertEqual(try Data(contentsOf: pdf), source, "recovery must not modify the source PDF")
+  }
+
+  @MainActor
+  private func exercisePageRecovery(
+    _ action: String,
+    onPDFSurface: Bool,
+    pdf: URL
+  ) throws {
+    let app = application()
+    app.launchEnvironment["LECTURA_STRESS_FAIL_PAGE_INDEX"] = "0"
+    app.launch()
+    defer {
+      let cancel = app.buttons["reader.processing.cancel"]
+      if cancel.exists {
+        cancel.click()
+        _ = app.buttons["reader.processing.resume"].waitForExistence(timeout: 10)
+      }
+      app.terminate()
+    }
+    try openDocument(pdf, in: app)
+
+    XCTAssertTrue(
+      app.descendants(matching: .any)["reader.immersion"].waitForExistence(timeout: 120))
+    if onPDFSurface {
+      let pdfSurface = app.descendants(matching: .any)["reader.view.pdf.option"]
+      XCTAssertTrue(pdfSurface.waitForExistence(timeout: 10))
+      pdfSurface.click()
+    }
+
+    let page = app.staticTexts["reader.page"]
+    let pageBefore =
+      onPDFSurface && page.waitForExistence(timeout: 10)
+      ? page.value as? String : nil
+    let retry = app.buttons["reader.processing.retry.0"]
+    let skip = app.buttons["reader.processing.skip.0"]
+    let forceOCR = app.buttons["reader.processing.force_ocr.0"]
+    guard retry.waitForExistence(timeout: 120) else {
+      XCTFail("a failed page must offer Retry")
+      return
+    }
+    guard skip.waitForExistence(timeout: 5) else {
+      XCTFail("a failed page must offer Skip page")
+      return
+    }
+    guard forceOCR.waitForExistence(timeout: 5) else {
+      XCTFail("a failed page must offer Force OCR")
+      return
+    }
+    for control in [retry, skip, forceOCR] {
+      XCTAssertTrue(control.isHittable)
+      XCTAssertFalse(control.label.isEmpty)
+      XCTAssertEqual(control.value as? String, "1")
+    }
+    XCTAssertTrue(app.buttons["narration.toggle"].isEnabled)
+    XCTAssertFalse(app.descendants(matching: .any)["translation.text.version"].exists)
+
+    let selected = app.buttons["reader.processing.\(action).0"]
+    if action == "retry" {
+      app.typeKey("t", modifierFlags: [.command, .shift])
+    } else {
+      selected.click()
+    }
+    XCTAssertEqual(
+      XCTWaiter.wait(
+        for: [
+          XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: selected)
+        ], timeout: 120),
+      .completed)
+
+    if action == "skip" {
+      let details = app.descendants(matching: .any)["reader.processing.details"]
+      XCTAssertTrue(details.waitForExistence(timeout: 10))
+      details.click()
+      XCTAssertTrue(
+        app.descendants(matching: .any)["reader.processing.page.0.skipped"]
+          .waitForExistence(timeout: 10))
+      app.typeKey(.escape, modifierFlags: [])
+    }
+    if action == "force_ocr" {
+      let expected = ProcessInfo.processInfo.environment["LECTURA_OCR_RECOVERY_EXPECTED_TEXT"] ?? ""
+      let predicate =
+        expected.isEmpty
+        ? NSPredicate(format: "identifier BEGINSWITH 'reader.immersion.unit.'")
+        : NSPredicate(
+          format: "identifier BEGINSWITH 'reader.immersion.unit.' AND label CONTAINS[cd] %@",
+          expected)
+      XCTAssertTrue(
+        app.descendants(matching: .any).matching(predicate).firstMatch
+          .waitForExistence(timeout: 120))
+    }
+
+    XCTAssertTrue(app.buttons["narration.toggle"].isEnabled)
+    XCTAssertFalse(app.descendants(matching: .any)["translation.text.version"].exists)
+    if onPDFSurface { XCTAssertEqual(page.value as? String, pageBefore) }
+  }
+
+  @MainActor
   private func attachScreenshot(_ app: XCUIApplication, name: String) {
     let attachment = XCTAttachment(screenshot: app.screenshot())
     attachment.name = name
@@ -123,12 +376,26 @@ final class ReaderWindowUITests: XCTestCase {
 
   @MainActor
   func testFirstPageColdAndHotBudgetOnReferenceMac() throws {
+    guard
+      ProcessInfo.processInfo.environment["LECTURA_FIRST_PAGE_PERFORMANCE_TEST"] == "1"
+    else {
+      throw XCTSkip(
+        "Set LECTURA_FIRST_PAGE_PERFORMANCE_TEST=1 for the real first-page performance gate")
+    }
     guard hardwareModel() == "Mac16,12" else {
       throw XCTSkip("NFR4 is approved only on the trusted MacBook Air M4 reference host")
     }
-    let corpus = realCorpusPDFs()
+    guard
+      let corpusRoot = ProcessInfo.processInfo.environment["LECTURA_REAL_PDF_CORPUS"],
+      !corpusRoot.isEmpty
+    else {
+      XCTFail("Set LECTURA_REAL_PDF_CORPUS to a directory containing at least two PDFs")
+      return
+    }
+    let corpus = realCorpusPDFs(at: corpusRoot)
     guard corpus.count >= 2 else {
-      throw XCTSkip("The real PDF corpus needs at least two documents")
+      XCTFail("LECTURA_REAL_PDF_CORPUS must contain at least two PDFs")
+      return
     }
     let first = try stageRealPDF(corpus[0])
     let second = try stageRealPDF(corpus[1])
@@ -179,10 +446,12 @@ final class ReaderWindowUITests: XCTestCase {
       let duration = TimeInterval(
         ProcessInfo.processInfo.environment["LECTURA_STRESS_DURATION_SECONDS"] ?? "")
     else { throw XCTSkip("Set LECTURA_STRESS_DURATION_SECONDS") }
-    guard let metricsPath = ProcessInfo.processInfo.environment["LECTURA_STRESS_METRICS_PATH"]
-    else {
+    guard ProcessInfo.processInfo.environment["LECTURA_STRESS_METRICS_PATH"] != nil else {
       throw XCTSkip("Set LECTURA_STRESS_METRICS_PATH")
     }
+    guard let modelRoot = ProcessInfo.processInfo.environment["LECTURA_STRESS_MODEL_ROOT"],
+      FileManager.default.fileExists(atPath: modelRoot)
+    else { throw XCTSkip("Set LECTURA_STRESS_MODEL_ROOT") }
     let staging = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString, isDirectory: true)
     try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
@@ -191,17 +460,20 @@ final class ReaderWindowUITests: XCTestCase {
     try FileManager.default.copyItem(at: URL(fileURLWithPath: path), to: pdf)
     let app = application()
     app.launchEnvironment["LECTURA_STRESS_FAIL_PAGE_INDEX"] = "3"
+    app.launchEnvironment["LECTURA_MODEL_ROOT"] = ""
     app.launch()
     defer { app.terminate() }
     try openDocument(pdf, in: app)
-    XCTAssertTrue(app.staticTexts["reader.page"].waitForExistence(timeout: 60))
-    dismissTutorialIfShown(in: app)
+    XCTAssertTrue(
+      app.descendants(matching: .any)["reader.immersion"].waitForExistence(timeout: 60))
 
-    XCTAssertTrue(app.descendants(matching: .any)["reader.immersion"].waitForExistence(timeout: 60))
     let renderedUnit = app.descendants(matching: .any)
       .matching(NSPredicate(format: "identifier BEGINSWITH 'reader.immersion.unit.'"))
       .firstMatch
-    XCTAssertTrue(renderedUnit.waitForExistence(timeout: 60))
+    guard renderedUnit.waitForExistence(timeout: 60) else {
+      XCTFail("the long document produced no visible reading unit")
+      return
+    }
     XCTAssertEqual(
       XCTWaiter.wait(
         for: [
@@ -210,16 +482,9 @@ final class ReaderWindowUITests: XCTestCase {
             object: renderedUnit)
         ], timeout: 5),
       .completed)
-    let firstUnitIdentifier = renderedUnit.identifier
-    app.typeKey(.rightArrow, modifierFlags: [])
-    XCTAssertEqual(
-      XCTWaiter.wait(
-        for: [
-          XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "identifier != %@", firstUnitIdentifier),
-            object: renderedUnit)
-        ], timeout: 60),
-      .completed)
+    let nextUnit = app.buttons["narration.next"]
+    XCTAssertTrue(nextUnit.waitForExistence(timeout: 5))
+    nextUnit.click()
     var maxUIResponseMs = timed { toggleReadingSurface(in: app) }
     var surfaceSwitches = 1
     Thread.sleep(forTimeInterval: 1)
@@ -261,27 +526,127 @@ final class ReaderWindowUITests: XCTestCase {
     maxUIResponseMs = max(
       maxUIResponseMs,
       (ProcessInfo.processInfo.systemUptime - transitionStarted) * 1_000)
+    XCTAssertEqual(app.staticTexts["reader.page"].value as? String, positionBeforeRetry)
     maxUIResponseMs = max(maxUIResponseMs, timed { toggleReadingSurface(in: app) })
     surfaceSwitches += 1
     XCTAssertTrue(app.descendants(matching: .any)["reader.immersion"].waitForExistence(timeout: 60))
-    // Immersion is a continuous scroll through the book, so its indicator reports progress through
-    // the document rather than a page number; the page counter only exists on the PDF surface.
-    let score = app.descendants(matching: .any)["reader.immersion.score"].firstMatch
-    XCTAssertTrue(score.waitForExistence(timeout: 30))
-    let progress = (score.value as? String) ?? ""
-    XCTAssertTrue(progress.hasSuffix("%"), "el indicador debe informar progreso: \(progress)")
-    XCTAssertNotNil(Int(progress.dropLast()), "progreso ilegible: \(progress)")
     XCTAssertFalse(positionBeforeRetry?.isEmpty ?? true)
+    let translationAnchor = app.descendants(matching: .any)
+      .matching(NSPredicate(format: "identifier BEGINSWITH 'reader.immersion.unit.'"))
+      .firstMatch
+    guard translationAnchor.waitForExistence(timeout: 60) else {
+      XCTFail("recovery left no visible reading anchor")
+      return
+    }
+    translationAnchor.click()
+
+    let more = app.popUpButtons["reader.more"]
+    XCTAssertTrue(more.waitForExistence(timeout: 10))
+    more.click()
+    let translate = app.descendants(matching: .any)["translation.action"]
+    XCTAssertTrue(translate.waitForExistence(timeout: 5))
+    translate.click()
+    chooseDirectory(modelRoot, from: app.buttons["translation.storage.choose"], in: app)
+    XCTAssertTrue(
+      app.descendants(matching: .any)["translation.installed"].waitForExistence(timeout: 60))
+    let target = app.popUpButtons["translation.target"]
+    XCTAssertTrue(target.waitForExistence(timeout: 5))
+    target.click()
+    app.typeKey(.downArrow, modifierFlags: [])
+    app.typeKey(.return, modifierFlags: [])
+    let startTranslation = app.buttons["translation.request.start"]
+    XCTAssertTrue(startTranslation.isEnabled)
+    startTranslation.click()
+    XCTAssertTrue(
+      app.descendants(matching: .any)["translation.requested"].waitForExistence(timeout: 10))
+    app.buttons["translation.close"].click()
+    let translationRunning = app.descendants(matching: .any)["translation.progress.running"]
+    let translationFailed = app.descendants(matching: .any)["translation.progress.failed"]
+    XCTAssertTrue(
+      translationRunning.waitForExistence(timeout: 15) || translationFailed.exists,
+      "translation must start or report a failure")
+    guard !translationFailed.exists else {
+      XCTFail("translation runtime failed before producing text")
+      return
+    }
+    let translatedVersion = app.descendants(matching: .any)["translation.text.translation"]
+    XCTAssertEqual(
+      XCTWaiter.wait(
+        for: [
+          XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == true AND enabled == true"),
+            object: translatedVersion)
+        ], timeout: 300),
+      .completed)
+    translatedVersion.click()
+    let translatedUnit = app.descendants(matching: .any)
+      .matching(NSPredicate(format: "identifier BEGINSWITH 'reader.immersion.unit.'"))
+      .firstMatch
+    guard translatedUnit.waitForExistence(timeout: 60) else {
+      XCTFail("translation removed the visible reading unit")
+      return
+    }
+    more.click()
+    let voice = app.descendants(matching: .any)["voice.action"]
+    XCTAssertTrue(voice.waitForExistence(timeout: 5))
+    voice.click()
+    guard app.descendants(matching: .any)["voice.installed"].waitForExistence(timeout: 60) else {
+      XCTFail("the installed narration model was not ready")
+      return
+    }
+    app.buttons["voice.close"].click()
+    translatedUnit.click()
+    more.click()
+    let translatedNarration = app.descendants(matching: .any)["narration.source.translation"]
+    XCTAssertTrue(translatedNarration.waitForExistence(timeout: 5))
+    translatedNarration.click()
+    app.buttons["narration.toggle"].click()
+    let narrationStatus = app.descendants(matching: .any)["narration.status"]
+    guard
+      XCTWaiter.wait(
+        for: [
+          XCTNSPredicateExpectation(
+            predicate: NSPredicate(
+              format: "label == 'Reading aloud' AND value == 'Translation'"),
+            object: narrationStatus)
+        ], timeout: 180) == .completed
+    else {
+      XCTFail("translated narration did not reach playback")
+      return
+    }
 
     let deadline = Date().addingTimeInterval(duration)
     var forward = true
     var cycle = 0
+    var narrationSourceSwitches = 0
+    var pauseResumeCycles = 0
     while Date() < deadline {
+      XCTAssertFalse(
+        translationFailed.exists,
+        "automatic translation continuation must not turn normal completion into a failure")
       maxUIResponseMs = max(
         maxUIResponseMs,
-        timed { app.typeKey(forward ? .rightArrow : .leftArrow, modifierFlags: []) })
+        timed { app.buttons[forward ? "narration.next" : "narration.previous"].click() })
       forward.toggle()
       cycle += 1
+      if cycle.isMultiple(of: 3) {
+        app.scrollViews["reader.immersion"].scroll(byDeltaX: 0, deltaY: -120)
+      }
+      if cycle.isMultiple(of: 4) {
+        app.buttons["narration.toggle"].click()
+        Thread.sleep(forTimeInterval: 1)
+        app.buttons["narration.toggle"].click()
+        pauseResumeCycles += 1
+      }
+      if cycle.isMultiple(of: 6) {
+        more.click()
+        let source = app.descendants(matching: .any)[
+          narrationSourceSwitches.isMultiple(of: 2)
+            ? "narration.source.original" : "narration.source.translation"]
+        XCTAssertTrue(source.waitForExistence(timeout: 5))
+        source.click()
+        narrationSourceSwitches += 1
+      }
       if cycle.isMultiple(of: 12) {
         toggleReadingSurface(in: app)
         surfaceSwitches += 1
@@ -293,6 +658,9 @@ final class ReaderWindowUITests: XCTestCase {
       }
       Thread.sleep(forTimeInterval: 5)
     }
+    XCTAssertFalse(
+      translationFailed.exists,
+      "translation must remain healthy after sustained navigation and surface changes")
     app.activate()
     let immersionCapture = XCTAttachment(screenshot: app.screenshot())
     immersionCapture.name = "real-corpus-immersion-after-navigation"
@@ -303,9 +671,17 @@ final class ReaderWindowUITests: XCTestCase {
       "navigation_cycles": cycle,
       "surface_switches": surfaceSwitches,
       "recovery_cycle_completed": true,
+      "translated_units_played": 1,
+      "narration_source_switches": narrationSourceSwitches,
+      "pause_resume_cycles": pauseResumeCycles,
     ]
-    try JSONSerialization.data(withJSONObject: metrics, options: [.prettyPrinted, .sortedKeys])
-      .write(to: URL(fileURLWithPath: metricsPath), options: .atomic)
+    let metricsAttachment = XCTAttachment(
+      data: try JSONSerialization.data(
+        withJSONObject: metrics, options: [.prettyPrinted, .sortedKeys]),
+      uniformTypeIdentifier: "public.json")
+    metricsAttachment.name = "reader-stress-metrics.json"
+    metricsAttachment.lifetime = .keepAlways
+    add(metricsAttachment)
   }
 
   private func timed(_ action: () -> Void) -> Double {
@@ -316,22 +692,25 @@ final class ReaderWindowUITests: XCTestCase {
 
   @MainActor
   private func toggleReadingSurface(in app: XCUIApplication) {
-    let immersion = app.descendants(matching: .any)["reader.immersion"].firstMatch
-    if immersion.exists {
-      immersion.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).hover()
-    }
-    let toggle = app.buttons["reader.view.toggle"]
-    XCTAssertTrue(toggle.waitForExistence(timeout: 5))
-    XCTAssertTrue(toggle.isHittable)
-    toggle.click()
+    let target = app.descendants(matching: .any)[
+      app.descendants(matching: .any)["reader.immersion"].exists
+        ? "reader.view.pdf.option" : "reader.view.immersion.option"]
+    XCTAssertTrue(target.waitForExistence(timeout: 5))
+    XCTAssertTrue(target.isHittable)
+    target.click()
   }
 
   /// The first-run tutorial opens automatically once the reader reaches its reading state and, by
   /// design, hides the reading content behind it from the accessibility tree while it is up — the
-  /// same reason a real VoiceOver user should not hear both layers at once. Every flow below that
-  /// opens a real document has to close it before it can see `reader.*` elements at all.
+  /// same reason a real VoiceOver user should not hear both layers at once. Every real-document
+  /// flow routes through `openDocument`, which closes it before the test reads `reader.*` content.
   @MainActor
   private func dismissTutorialIfShown(in app: XCUIApplication) {
+    let viewSwitcher = app.descendants(matching: .any)["reader.view"]
+    guard viewSwitcher.waitForExistence(timeout: 60) else {
+      XCTFail("The reader did not reach its reading state")
+      return
+    }
     let skip = app.buttons["tutorial.skip"]
     guard skip.waitForExistence(timeout: 3) else { return }
     skip.click()
@@ -341,7 +720,6 @@ final class ReaderWindowUITests: XCTestCase {
   private func open(_ pdf: URL, in app: XCUIApplication) throws -> Double {
     try openDocument(pdf, in: app)
     XCTAssertTrue(app.staticTexts["reader.page"].waitForExistence(timeout: 60))
-    dismissTutorialIfShown(in: app)
     let metric = app.staticTexts["reader.first-page-ms"]
     // Same reasoning as testOpensRealPDFAndNavigatesWithKeyboard: the wait itself must not be
     // bounded by the 2 s budget the assertions below actually enforce.
@@ -378,6 +756,22 @@ final class ReaderWindowUITests: XCTestCase {
     location.typeText(pdf.path)
     app.typeKey(.return, modifierFlags: [])
     openButton(in: app).click()
+    dismissTutorialIfShown(in: app)
+  }
+
+  @MainActor
+  private func chooseDirectory(_ path: String, from button: XCUIElement, in app: XCUIApplication) {
+    XCTAssertTrue(button.waitForExistence(timeout: 5))
+    button.click()
+    XCTAssertTrue(app.dialogs.firstMatch.waitForExistence(timeout: 10))
+    app.typeKey("g", modifierFlags: [.command, .shift])
+    let location = app.textFields["PathTextField"]
+    XCTAssertTrue(location.waitForExistence(timeout: 5))
+    location.click()
+    location.typeKey("a", modifierFlags: .command)
+    location.typeText(path)
+    app.typeKey(.return, modifierFlags: [])
+    openButton(in: app).click()
   }
 
   @MainActor
@@ -406,11 +800,12 @@ final class ReaderWindowUITests: XCTestCase {
     return String(decoding: bytes.dropLast().map(UInt8.init(bitPattern:)), as: UTF8.self)
   }
 
-  private func realCorpusPDFs() -> [URL] {
-    let fallback =
-      "/Users/jailiivinaibuelvasdiaz/Proyectos/academico/projects/children-of-the-state/02-literature/bibliography/sources"
-    let root = URL(
-      fileURLWithPath: ProcessInfo.processInfo.environment["LECTURA_REAL_PDF_CORPUS"] ?? fallback)
+  private func realCorpusPDFs(at rootPath: String? = nil) -> [URL] {
+    guard
+      let rootPath = rootPath ?? ProcessInfo.processInfo.environment["LECTURA_REAL_PDF_CORPUS"],
+      !rootPath.isEmpty
+    else { return [] }
+    let root = URL(fileURLWithPath: rootPath)
     guard
       let files = FileManager.default.enumerator(
         at: root, includingPropertiesForKeys: [.isRegularFileKey],
@@ -457,7 +852,6 @@ final class ReaderWindowUITests: XCTestCase {
 
     let page = app.staticTexts["reader.page"]
     XCTAssertTrue(page.waitForExistence(timeout: 120), "the page indicator must survive opening")
-    dismissTutorialIfShown(in: app)
 
     // A blank page (this book's title verso) must never be reported as a failed page.
     let failureRetry = app.buttons

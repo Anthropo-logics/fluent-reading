@@ -187,7 +187,7 @@
 		010000000000000000000301 /* LecturaFluida */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 010000000000000000000801 /* Build configuration list for PBXNativeTarget "LecturaFluida" */;
-			buildPhases = (010000000000000000000701 /* Build Rust */, 010000000000000000000601 /* Sources */, 010000000000000000000401 /* Frameworks */, 010000000000000000000511 /* Resources */,);
+			buildPhases = (010000000000000000000701 /* Build Rust */, 010000000000000000000601 /* Sources */, 010000000000000000000401 /* Frameworks */, 010000000000000000000511 /* Resources */, 010000000000000000000703 /* Embed Stress Runtimes */,);
 			buildRules = ();
 			dependencies = (010000000000000000000211 /* PBXTargetDependency */,);
 			name = LecturaFluida;
@@ -291,6 +291,19 @@
 			shellScript = "\"${SRCROOT}/../../scripts/build-rust-macos.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
+		010000000000000000000703 /* Embed Stress Runtimes */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = ();
+			inputPaths = ();
+			name = "Embed Stress Runtimes";
+			outputPaths = ();
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "if [[ \" ${SWIFT_ACTIVE_COMPILATION_CONDITIONS} \" == *\" STRESS_TEST \"* ]]; then\n  export LECTURA_RELEASE_CHANNEL=adhoc\n  export LECTURA_EMBED_OUTER_SIGNING=xcode\n  \"${SRCROOT}/../../scripts/embed-runtimes.sh\" \"${TARGET_BUILD_DIR}/${WRAPPER_NAME}\" \"${LECTURA_STRESS_MODEL_ROOT}\"\nfi\n";
+			showEnvVarsInLog = 0;
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -313,8 +326,8 @@
 /* Begin XCBuildConfiguration section */
 		010000000000000000000901 /* Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = 01000000000000000000010C /* Debug.xcconfig */; buildSettings = {}; name = Debug; };
 		010000000000000000000902 /* Release */ = {isa = XCBuildConfiguration; baseConfigurationReference = 01000000000000000000010D /* Release.xcconfig */; buildSettings = {}; name = Release; };
-		010000000000000000000911 /* Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = 01000000000000000000010C /* Debug.xcconfig */; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_ENTITLEMENTS = Config/LecturaFluida.entitlements; CURRENT_PROJECT_VERSION = 5; ENABLE_APP_SANDBOX = YES; ENABLE_HARDENED_RUNTIME = YES; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "Fluent Reading"; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity"; INFOPLIST_KEY_NSHumanReadableCopyright = "© 2026 Jaili Ivinai Buelvas Diaz. Free software under GPL-3.0-or-later."; MARKETING_VERSION = 0.4.1; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks"; LIBRARY_SEARCH_PATHS = "$(inherited) $(DERIVED_FILE_DIR)/rust/$(RUST_PROFILE)"; OTHER_LDFLAGS = "$(inherited) -llectura_ffi"; PRODUCT_BUNDLE_IDENTIFIER = com.lecturafluida.app; PRODUCT_NAME = LecturaFluida; SWIFT_EMIT_LOC_STRINGS = YES; }; name = Debug; };
-		010000000000000000000912 /* Release */ = {isa = XCBuildConfiguration; baseConfigurationReference = 01000000000000000000010D /* Release.xcconfig */; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_ENTITLEMENTS = Config/LecturaFluida.entitlements; CURRENT_PROJECT_VERSION = 5; ENABLE_APP_SANDBOX = YES; ENABLE_HARDENED_RUNTIME = YES; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "Fluent Reading"; INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity"; INFOPLIST_KEY_NSHumanReadableCopyright = "© 2026 Jaili Ivinai Buelvas Diaz. Free software under GPL-3.0-or-later."; MARKETING_VERSION = 0.4.1; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks"; LIBRARY_SEARCH_PATHS = "$(inherited) $(DERIVED_FILE_DIR)/rust/$(RUST_PROFILE)"; OTHER_LDFLAGS = "$(inherited) -llectura_ffi"; PRODUCT_BUNDLE_IDENTIFIER = com.lecturafluida.app; PRODUCT_NAME = LecturaFluida; SWIFT_EMIT_LOC_STRINGS = YES; }; name = Release; };
+		010000000000000000000911 /* Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = 01000000000000000000010C /* Debug.xcconfig */; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_ENTITLEMENTS = "$(LECTURA_APP_ENTITLEMENTS)"; CURRENT_PROJECT_VERSION = 6; ENABLE_APP_SANDBOX = YES; ENABLE_HARDENED_RUNTIME = YES; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = Config/LecturaFluida-Info.plist; MARKETING_VERSION = 0.5.0; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks"; LIBRARY_SEARCH_PATHS = "$(inherited) $(DERIVED_FILE_DIR)/rust/$(RUST_PROFILE)"; OTHER_LDFLAGS = "$(inherited) -llectura_ffi"; PRODUCT_BUNDLE_IDENTIFIER = com.lecturafluida.app; PRODUCT_NAME = LecturaFluida; SWIFT_EMIT_LOC_STRINGS = YES; }; name = Debug; };
+		010000000000000000000912 /* Release */ = {isa = XCBuildConfiguration; baseConfigurationReference = 01000000000000000000010D /* Release.xcconfig */; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_ENTITLEMENTS = "$(LECTURA_APP_ENTITLEMENTS)"; CURRENT_PROJECT_VERSION = 6; ENABLE_APP_SANDBOX = YES; ENABLE_HARDENED_RUNTIME = YES; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = Config/LecturaFluida-Info.plist; MARKETING_VERSION = 0.5.0; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks"; LIBRARY_SEARCH_PATHS = "$(inherited) $(DERIVED_FILE_DIR)/rust/$(RUST_PROFILE)"; OTHER_LDFLAGS = "$(inherited) -llectura_ffi"; PRODUCT_BUNDLE_IDENTIFIER = com.lecturafluida.app; PRODUCT_NAME = LecturaFluida; SWIFT_EMIT_LOC_STRINGS = YES; }; name = Release; };
 		010000000000000000000921 /* Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = 01000000000000000000010C /* Debug.xcconfig */; buildSettings = {DEFINES_MODULE = YES; PRODUCT_BUNDLE_IDENTIFIER = com.lecturafluida.MacPlatform; PRODUCT_NAME = MacPlatform; SKIP_INSTALL = YES; }; name = Debug; };
 		010000000000000000000922 /* Release */ = {isa = XCBuildConfiguration; baseConfigurationReference = 01000000000000000000010D /* Release.xcconfig */; buildSettings = {DEFINES_MODULE = YES; PRODUCT_BUNDLE_IDENTIFIER = com.lecturafluida.MacPlatform; PRODUCT_NAME = MacPlatform; SKIP_INSTALL = YES; }; name = Release; };
 		010000000000000000000931 /* Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = 01000000000000000000010C /* Debug.xcconfig */; buildSettings = {GENERATE_INFOPLIST_FILE = YES; LIBRARY_SEARCH_PATHS = "$(inherited) $(DERIVED_FILE_DIR)/rust/$(RUST_PROFILE)"; OTHER_LDFLAGS = "$(inherited) -llectura_ffi"; PRODUCT_BUNDLE_IDENTIFIER = com.lecturafluida.tests; PRODUCT_NAME = LecturaMacTests; }; name = Debug; };

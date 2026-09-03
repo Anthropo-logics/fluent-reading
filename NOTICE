@@ -1,7 +1,7 @@
 NOTICE — Componentes de terceros de Lectura Fluida
 Third-party notices for Lectura Fluida / Fluent Reading / Leitura Fluída
 
-Actualizado: 2026-08-25
+Actualizado: 2026-09-03
 
 El código propio de esta aplicación es software libre bajo GPL-3.0-or-later; véase el archivo
 LICENSE. Este archivo inventaría los componentes de terceros que la aplicación empaqueta, enlaza,
@@ -9,8 +9,8 @@ ejecuta o descarga al dispositivo del lector, con su licencia y su procedencia.
 
 Cada licencia de este archivo se leyó de su fuente primaria — el manifiesto verificado del paquete
 (`models/manifests/*.json`), el archivo LICENSE del repositorio del componente, o el campo `license`
-de su metadata de paquete — y no de memoria. La sección 8 enumera lo que queda pendiente de revisión
-jurídica o de implementación antes de cualquier distribución pública, conforme a NFR11 del PRD.
+de su metadata de paquete — y no de memoria. La sección 8 enumera tanto las obligaciones que siguen
+abiertas antes de una distribución pública como las decisiones ya resueltas que conviene conservar.
 
 
 ================================================================================
@@ -51,21 +51,6 @@ kokoro-82m-4bit — voz (TTS)
     - g2p_packages_required
     - runtime_pair_architecture_review_pending
 
-kokoro-ipa-lexicons-es-pt — lexicones IPA auxiliares para español y portugués
-  Licencia declarada .... NOASSERTION (la metadata de origen no declara licencia)
-  Procedencia ........... beshkenadze, gruut (Michael Hansen / rhasspy)
-  Origen ................ https://huggingface.co/beshkenadze/kokoro-ipa-lexicons
-  Revisión .............. a3d069caea9a2b63daed40834514431f73a2f11e
-  Estado del manifiesto . pending_review
-  Restricciones declaradas en el manifiesto:
-    - repository_license_metadata_missing
-    - license_review_required
-    - kokoro_runtime_auxiliary_only
-  Nota: el publicador atribuye los datos a `gruut-lang-*` y advierte que las transcripciones IPA
-  fueron generadas ejecutando eSpeak NG (GPL-3.0-or-later), y que el efecto del copyleft sobre esa
-  salida masiva es discutido. El dictamen archivado en `docs/compliance/` lo resolvió como
-  `approved_with_conditions`; la condición es la atribución de la sección 7 de este archivo.
-
 translategemma-4b-it-4bit — traducción
   Licencia declarada .... gemma (Gemma Terms of Use, Google)
   Procedencia ........... Google, mlx-community
@@ -82,10 +67,11 @@ translategemma-4b-it-4bit — traducción
 Modelos evaluados y descartados, NUNCA distribuidos con la aplicación:
 `kokoro-kitten-tts-g2p`, `qwen3-tts-0.6b-customvoice-4bit`, `qwen3-tts-1.7b-customvoice-4bit`,
 `opus-mt-en-es`, `opus-mt-es-en`, `opus-mt-en-romance`, `opus-mt-romance-en`, `madlad400-3b-mt`,
-`kokoro-82m-onnx-int8-laboratory`. Conservan manifiesto en el repositorio como evidencia de las
-evaluaciones de las Stories 1.6 y 5.1; el proyecto de Xcode no los incluye como recurso y la
-aplicación nunca los referencia. No forman parte de lo distribuido y no requieren revisión previa al
-lanzamiento.
+`kokoro-82m-onnx-int8-laboratory`, `kokoro-ipa-lexicons-es-pt`. Conservan manifiesto en el
+repositorio como evidencia de evaluaciones históricas; el proyecto de Xcode no los incluye como
+recurso. El último sólo permanece disponible para herramientas de laboratorio heredadas: la
+aplicación macOS usa eSpeak NG para la fonemización en los tres idiomas compatibles, y
+`kokoro-ipa-lexicons-es-pt` no se distribuye ni se descarga con la aplicación.
 
 
 ================================================================================
@@ -95,7 +81,7 @@ lanzamiento.
 Estos binarios sí viajan dentro de `LecturaFluida.app/Contents/Helpers/` (y sus datos en
 `Contents/Resources/`), instalados por `scripts/embed-runtimes.sh`.
 
-eSpeak NG 1.52.0 — fonemización (grafema → IPA) para narración en español
+eSpeak NG 1.52.0 — fonemización (grafema → IPA) para narración en español, inglés y portugués
   Licencia .............. GPL-3.0-or-later (archivo COPYING del propio proyecto)
   Excepción ............. la implementación de compatibilidad `getopt.c` procede de NetBSD y es BSD
                           de 2 cláusulas (COPYING.BSD2)
@@ -197,8 +183,8 @@ de Apple se usan bajo el acuerdo de licencia del SDK de Apple. No se redistribuy
 
 El proyecto es software libre bajo GPL-3.0-or-later (véase LICENSE). Esa elección concreta —"o
 posterior" en vez de sólo la versión 3— iguala la propia cláusula de eSpeak NG y es, dentro de las
-licencias libres, es de las que pueden combinarse sin conflicto con los dos componentes copyleft que la
-aplicación empaqueta (sección 2). La tabla comprueba cada familia de licencias de las secciones 2-4
+licencias libres, una de las que pueden combinarse sin conflicto con los dos componentes copyleft que
+la aplicación empaqueta (sección 2). La tabla comprueba cada familia de licencias de las secciones 2-4
 contra la GPLv3 en vez de asumir la compatibilidad.
 
 Componente / familia de licencia          ¿Compatible con GPL-3.0-or-later?
@@ -219,10 +205,6 @@ Unicode-3.0                                Sí — Unicode-3.0 es una licencia p
                                           la cláusula AND no añade una restricción copyleft.
 swift-xet (Apache-2.0, resuelto            Sí, en una sola dirección — misma regla que la fila
 2026-08-22, ver sección 3)                 anterior de licencias Apache-2.0. Sección 8, punto 4.
-kokoro-ipa-lexicons-es-pt (NOASSERTION)   DESCONOCIDO, pero son datos que el usuario descarga en
-                                          tiempo de ejecución, no código enlazado en el binario;
-                                          no afecta a la licencia del código propio del proyecto.
-                                          Sección 8, punto 3.
 Pesos de kokoro-82m-4bit (Apache-2.0)     Sí (además son datos que descarga el usuario, no se
                                           distribuyen con el instalador).
 Pesos de translategemma-4b-it-4bit
@@ -235,13 +217,9 @@ Pesos de translategemma-4b-it-4bit
 7. Atribuciones exigidas
 ================================================================================
 
-El dictamen de cumplimiento NFR11 archivado en `docs/compliance/NFR11-G2P-CIERRE-001.docx` y
-`docs/compliance/gate-a-nfr11-review-request.md` condiciona la distribución a que estas atribuciones
-aparezcan en un lugar visible de la aplicación. El panel "Acerca de" muestra este archivo completo,
-con lo que quedan cubiertas:
+Estas atribuciones deben aparecer en un lugar visible de la aplicación. El panel "Acerca de"
+muestra este archivo completo, con lo que quedan cubiertas:
 
-  - gruut — Michael Hansen (rhasspy) — https://github.com/rhasspy/gruut — origen de los lexicones
-    IPA de español y portugués.
   - byT5 / g2p multilingüe — `charsiu/g2p_multilingual_byT5_tiny_16_layers_100`, conversión MLX de
     beshkenadze — fonemización neuronal.
   - Misaki — hexgrad — Apache-2.0 — fonemización de inglés.
@@ -250,18 +228,18 @@ con lo que quedan cubiertas:
 
 
 ================================================================================
-8. Pendiente antes de cualquier distribución pública (NFR11)
+8. Obligaciones y decisiones de distribución
 ================================================================================
 
 Elegir la GPL-3.0-or-later cierra el conflicto de licencias de fondo, pero no cierra por sí solo las
-obligaciones de distribución. Estos puntos siguen abiertos y se enumeran de forma explícita para que
-no queden como omisión silenciosa.
+obligaciones de distribución. Esta sección distingue los puntos abiertos de las decisiones ya
+resueltas para que el estado actual no quede implícito.
 
 8.1 Obligaciones GPLv3 al distribuir binarios
-    La premisa del dictamen jurídico del 2026-08-19 ("el binario no empaqueta ni ejecuta eSpeak NG",
-    §3.2/§4.2 de `NFR11-G2P-CIERRE-001.docx`) dejó de ser cierta cuando se activó la fonemización de
-    numerales en español y `scripts/embed-runtimes.sh` empezó a copiar eSpeak NG, su dylib y
-    `pcaudiolib` dentro del bundle firmado. Con el proyecto bajo GPL-3.0-or-later ya no hay
+    Una revisión del 2026-08-19 partió de que el binario no empaquetaba ni ejecutaba eSpeak NG. Esa
+    premisa dejó de ser cierta cuando se activó la fonemización de numerales en español y
+    `scripts/embed-runtimes.sh` empezó a copiar eSpeak NG, su dylib y `pcaudiolib` dentro del bundle
+    firmado. Con el proyecto bajo GPL-3.0-or-later ya no hay
     incompatibilidad: la obra combinada se distribuye bajo la misma licencia que exige el componente
     copyleft — decisión explícita del propietario (2026-08-20), que incluye conscientemente la
     consecuencia del punto (d) siguiente.
@@ -294,11 +272,11 @@ no queden como omisión silenciosa.
     todavía no se entrega con la aplicación, y su restricción `commercial_review_pending` sigue
     abierta.
 
-8.3 `kokoro-ipa-lexicons-es-pt` conserva `license_id: NOASSERTION` y `license_review_required`. El
-    dictamen lo aprobó con condiciones (atribución a gruut, cumplida en la sección 7) y dejó
-    constancia de que la postura contraria — extracción masiva como "vaciado" de base de datos — no
-    se resolvió con jurisprudencia específica. Riesgo aceptado y documentado, no certeza jurídica.
-    Como son datos que descarga el usuario, no bloquean la licencia del código.
+8.3 **Resuelto 2026-09-03 para la distribución actual.** `kokoro-ipa-lexicons-es-pt` conserva en el
+    repositorio su manifiesto histórico con `license_id: NOASSERTION` y `license_review_required`,
+    pero la aplicación macOS no lo incluye, instala ni descarga. La fonemización actual en los tres
+    idiomas compatibles usa eSpeak NG, acreditado en las secciones 2 y 7. Por tanto, este paquete no
+    forma parte del producto distribuido ni condiciona su lanzamiento.
 
 8.4 **Resuelto 2026-08-22** (abierto desde 2026-08-20). `swift-xet` llega al bundle dentro de
     `mlx-audio-swift-tts`. El 2026-08-20 el repositorio (`mattt/swift-xet` 0.2.3) no publicaba
@@ -309,17 +287,17 @@ no queden como omisión silenciosa.
     que el resto de dependencias Apache-2.0 de la sección 3 (véase la tabla de la sección 6). Ya no
     bloquea la distribución del binario.
 
-8.5 Los tres manifiestos distribuidos siguen con `distribution_status: pending_review`. El dictamen
-    recomienda actualizarlos, pero ese cambio de datos requiere autorización explícita del
-    propietario y no se aplicó en esta story.
+8.5 Los dos manifiestos de modelos descargables, `kokoro-82m-4bit` y
+    `translategemma-4b-it-4bit`, siguen con `distribution_status: pending_review`. Actualizar ese
+    estado requiere una decisión explícita del propietario. El manifiesto separado del clasificador
+    PP-DocLayoutV3 corresponde a un recurso empaquetado, con licencia e integridad verificadas, y no
+    declara ese estado pendiente.
 
-8.6 Derechos sobre el audio generado. El dictamen concluyó que el audio generado mecánicamente no es
-    elegible para copyright tradicional y que el usuario puede usarlo y exportarlo sin restricción.
-    Bajo GPL-3.0-or-later la licencia del programa tampoco alcanza a su salida. Queda como tarea de
-    redacción — no jurídica — dejarlo dicho de forma visible para el usuario, ya que hoy no aparece
-    en ninguna parte de la aplicación.
+8.6 **Resuelto 2026-09-03.** La licencia GPL-3.0-or-later del programa no se extiende al audiolibro
+    generado. Los manuales en español, inglés y portugués lo explican de forma visible y recuerdan
+    que el usuario debe respetar los derechos del documento de origen.
 
-8.7 La aplicación no tiene un ícono propio (usa el genérico que macOS asigna por defecto) ni ningún
-    mecanismo de actualización automática. Ninguno de los dos bloquea la distribución directa que el
-    punto 1.d deja como único canal viable, pero ambos son elementos formales esperables de una
-    aplicación macOS distribuible y quedan pendientes de diseño/implementación futura.
+8.7 **Resuelto en el alcance actual.** La aplicación incluye un ícono propio adaptado a la estética
+    de macOS. Las actualizaciones se publican como paquetes versionados en GitHub Releases y el usuario
+    instala la versión elegida de forma manual; no existe un actualizador automático, por decisión
+    explícita para este canal de distribución directa sin backend.

@@ -406,6 +406,49 @@ final class LFContractTests: XCTestCase {
       try JSONDecoder().decode(LFNormalizedPage.self, from: Data(contentsOf: destination)), first)
   }
 
+  func testNormalizedPagesRestoreByTrackingUnit() async throws {
+    let raw = DigitalPageResult(
+      pageIndex: 2,
+      status: "completed",
+      blocks: [
+        DigitalTextBlock(
+          blockID: "page-2-block-0",
+          text: "Primera frase. Segunda frase.",
+          region: DigitalSourceRegion(
+            pageIndex: 2,
+            rectPDFPoints: [0, 0, 10, 10],
+            pageRotationDegrees: 0,
+            sourceToPageTransform: [1, 0, 0, 1, 0, 0],
+            confidence: 1),
+          confidence: 1)
+      ],
+      errorCode: nil)
+    let paragraphEvent = try await EngineClient.normalizePage(
+      raw, documentFingerprint: "restore", generationID: "generation_restore")
+    let sentenceEvent = try await EngineClient.normalizePage(
+      raw, documentFingerprint: "restore", generationID: "generation_restore",
+      requestedUnit: "sentence")
+    let paragraph = try XCTUnwrap(paragraphEvent.result?.normalizedPage)
+    let sentence = try XCTUnwrap(sentenceEvent.result?.normalizedPage)
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent("restored-pages-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    _ = try LocalStateStore.save(
+      paragraph, pageIndex: 2, documentID: "doc_restore", unit: .paragraph, root: root)
+    _ = try LocalStateStore.save(
+      sentence, pageIndex: 2, documentID: "doc_restore", unit: .sentence, root: root)
+
+    XCTAssertEqual(
+      try LocalStateStore.loadNormalizedPages(
+        documentID: "doc_restore", unit: .paragraph, root: root),
+      [2: paragraph])
+    XCTAssertEqual(
+      try LocalStateStore.loadNormalizedPages(
+        documentID: "doc_restore", unit: .sentence, root: root),
+      [2: sentence])
+  }
+
   private func fixture(named name: String) throws -> Data {
     let bundle = Bundle(for: Self.self)
     let url = try XCTUnwrap(bundle.url(forResource: name, withExtension: "json"))

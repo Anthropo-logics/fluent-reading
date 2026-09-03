@@ -3,6 +3,31 @@ import XCTest
 @testable import MacPlatform
 
 final class TranslationServicesTests: XCTestCase {
+  func testVisibleTextProjectionIsReversibleAndNeverLabelsUnconfirmedTextAsTranslated() {
+    let source = "Texto fuente"
+    let translated = TranslationUnitStatus.translated("Translated text")
+
+    XCTAssertEqual(
+      TranslationServices.visibleText(source: source, status: translated, showingOriginal: false),
+      "Translated text")
+    XCTAssertEqual(
+      TranslationServices.visibleText(source: source, status: translated, showingOriginal: true),
+      source)
+    XCTAssertEqual(
+      TranslationServices.visibleText(source: source, status: translated, showingOriginal: false),
+      "Translated text",
+      "returning to Translation reuses the confirmed result")
+
+    for status in [
+      TranslationUnitStatus.pending, .failed, .nonTranslatable,
+    ] {
+      XCTAssertEqual(
+        TranslationServices.visibleText(source: source, status: status, showingOriginal: false),
+        source,
+        "pending, failed and non-translatable units remain visibly source text")
+    }
+  }
+
   func testEligibilityKeepsDegradedAndNonProseContentOutOfTranslation() {
     XCTAssertTrue(
       TranslationServices.isEligibleForTranslation(contentClass: "prose", confidence: 0.7))
@@ -77,6 +102,41 @@ final class TranslationServicesTests: XCTestCase {
     ) {
       XCTAssertEqual($0 as? TranslationServiceError, .invalidPair)
     }
+  }
+
+  func testRuntimeAndModelFailuresRemainRecoverableAndAccountForEveryUnit() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+
+    let request = TranslationRequest(
+      modelId: "translategemma-4b-it-4bit", modelRevision: "revision123",
+      runtimeId: "mlx-swift-lm", runtimeVersion: "gemma3", sourceLanguage: "es",
+      targetLanguage: "en",
+      units: [
+        TranslationUnitRequest(unitId: "u1", text: "Primer pasaje."),
+        TranslationUnitRequest(unitId: "u2", text: "Segundo pasaje."),
+      ])
+    let missing = root.appendingPathComponent("missing")
+    XCTAssertThrowsError(
+      try TranslationServices.translate(request, runtimeURL: missing, modelURL: missing)
+    ) { XCTAssertEqual($0 as? TranslationServiceError, .runtimeMissing) }
+
+    let runtime = root.appendingPathComponent("failing-runtime")
+    try "#!/bin/sh\nexit 7\n".write(to: runtime, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: runtime.path)
+    XCTAssertThrowsError(
+      try TranslationServices.translate(request, runtimeURL: runtime, modelURL: missing)
+    ) { XCTAssertEqual($0 as? TranslationServiceError, .modelMissing) }
+
+    let model = root.appendingPathComponent("model", isDirectory: true)
+    try FileManager.default.createDirectory(at: model, withIntermediateDirectories: true)
+    let result = try TranslationServices.translate(
+      request, runtimeURL: runtime, modelURL: model,
+      workRoot: root.appendingPathComponent("translation-work", isDirectory: true))
+    XCTAssertTrue(result.translatedUnits.isEmpty)
+    XCTAssertEqual(result.failedUnitIds, ["u1", "u2"])
+    XCTAssertTrue(result.hasExactCorrespondence(toRequestedUnitIds: ["u1", "u2"]))
   }
 
   func testCorrespondenceIsExactAgainstARealBatchNoLossNoDuplication() throws {

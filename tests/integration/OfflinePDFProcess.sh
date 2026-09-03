@@ -3,11 +3,12 @@ set -euo pipefail
 
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$project_root"
+cargo_target_dir="${CARGO_TARGET_DIR:-$project_root/target}"
 
 output="$({
   sandbox-exec -p '(version 1) (allow default) (deny network*)' \
     env LECTURA_MACOS_WORKER="$project_root/target/lectura-macos-worker" \
-    "$project_root/target/debug/lectura" pdf process \
+    "$cargo_target_dir/debug/lectura" pdf process \
     --input "$project_root/tests/corpus/documents/en-single-digital.pdf" \
     --language en --unit paragraph --json
 } 2>/dev/null)"

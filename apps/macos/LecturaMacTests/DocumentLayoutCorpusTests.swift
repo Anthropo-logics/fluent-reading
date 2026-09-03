@@ -195,6 +195,65 @@ final class DocumentLayoutCorpusTests: XCTestCase {
     for error in performanceErrors { XCTFail(error) }
   }
 
+  func testDiagnosticPagesUseReaderRoute() async throws {
+    guard let casesPath = gateEnvironment("LECTURA_LAYOUT_CASES"),
+      let modelPath = gateEnvironment("LECTURA_LAYOUT_MODEL_URL"),
+      let evidencePath = gateEnvironment("LECTURA_LAYOUT_EVIDENCE_PATH")
+    else {
+      throw XCTSkip(
+        "Set LECTURA_LAYOUT_CASES, LECTURA_LAYOUT_MODEL_URL and LECTURA_LAYOUT_EVIDENCE_PATH")
+    }
+    let manifest = try JSONDecoder().decode(
+      CorpusManifest.self, from: Data(contentsOf: URL(fileURLWithPath: casesPath)))
+    if CorpusGate.hasExactCaseIDs(manifest.results.map(\.id)) {
+      throw XCTSkip("Use testNativeLayoutOnStratifiedCorpus for the fixed acceptance corpus")
+    }
+    XCTAssertFalse(manifest.results.isEmpty, "diagnostic manifest is empty")
+    XCTAssertEqual(manifest.results.count, manifest.expectedCaseCount)
+    guard manifest.results.count == manifest.expectedCaseCount else { return }
+
+    var isDirectory: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: modelPath, isDirectory: &isDirectory),
+      isDirectory.boolValue
+    else {
+      XCTFail("Explicit layout model is absent or invalid: \(modelPath)")
+      return
+    }
+    let modelURL = URL(fileURLWithPath: modelPath, isDirectory: true)
+    var results = [CaseEvidence]()
+    for testCase in manifest.results {
+      results.append(await evaluate(testCase, modelURL: modelURL))
+    }
+    for index in results.indices {
+      results[index].source = "restricted"
+      results[index].provenance = nil
+    }
+
+    let evidence = CorpusEvidence(
+      schemaVersion: 1, modelURL: "restricted", casesManifest: "restricted", cases: results)
+    let encoder = JSONEncoder()
+    encoder.keyEncodingStrategy = .convertToSnakeCase
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+    let evidenceURL = URL(fileURLWithPath: evidencePath)
+    try FileManager.default.createDirectory(
+      at: evidenceURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try encoder.encode(evidence).write(to: evidenceURL, options: .atomic)
+
+    for (testCase, result) in zip(manifest.results, results) {
+      XCTAssertTrue(result.errors.isEmpty, "\(result.id): \(result.errors.joined(separator: "; "))")
+      for outcome in [
+        "no_source_block_loss", "minimum_source_cardinality", "fallback_preserves_text",
+      ] {
+        XCTAssertEqual(result.outcomes[outcome], true, "\(result.id): \(outcome)")
+      }
+      if !testCase.expectedReadingFragments.isEmpty {
+        XCTAssertEqual(
+          result.outcomes["expected_reading_order"], true,
+          "\(result.id): expected_reading_order")
+      }
+    }
+  }
+
   private func evaluate(_ testCase: CorpusCase, modelURL: URL) async -> CaseEvidence {
     let pageIndex = testCase.page - 1
     let url = URL(fileURLWithPath: testCase.source)
@@ -213,8 +272,7 @@ final class DocumentLayoutCorpusTests: XCTestCase {
     {
       return .failed(testCase, error: "requires_ocr page contains usable embedded text")
     }
-    let warmLayout = await measureWarmLayout(
-      page: pdfPage, pageIndex: pageIndex, modelURL: modelURL, id: testCase.id)
+    let warmLayout = await measureWarmLayout(page: pdfPage, modelURL: modelURL, id: testCase.id)
     let language = testCase.language
     let digitalStarted = DispatchTime.now().uptimeNanoseconds
     let digital = await DocumentServices.extractDigitalPage(at: url, pageIndex: pageIndex)
@@ -301,6 +359,9 @@ final class DocumentLayoutCorpusTests: XCTestCase {
     }
     if testCase.id == "unicef_columns" {
       outcomes["multicolumn_order"] = outcomes["expected_reading_order"]
+      outcomes["unsupported_tail_visual_order"] =
+        Array(units.suffix(2).flatMap(\.sourceBlockIDs))
+        == ["page-5-block-46", "page-5-block-44", "page-5-block-73"]
     }
     if testCase.id == "mejia_es_scan_spread" {
       let pages = raw.blocks.compactMap(\.physicalPageIndex)
@@ -352,21 +413,32 @@ final class DocumentLayoutCorpusTests: XCTestCase {
       warmLayoutSamplesMilliseconds: warmLayout.samplesMilliseconds,
       warmLayoutMedianMilliseconds: warmLayout.medianMilliseconds,
       warmLayoutPhysicalPageCount: warmLayout.physicalPageCount,
+      normalizedRoute: normalized?.record.route ?? "not_available",
+      normalizedReasonCode: normalized?.record.reasonCode ?? "not_available",
+      normalizedStatus: normalized?.record.status ?? "not_available",
+      normalizationElapsedMilliseconds: normalized?.record.elapsedMilliseconds ?? 0,
+      unitSourceBlockCounts: units.map { $0.sourceBlockIDs.count },
+      unitCharacterCounts: units.map { $0.text.count },
+      visibleSpokenEqualCount: units.filter { $0.text == $0.narrationText }.count,
+      firstAutomaticUnitSourceBlockCount: units.first(where: \.isNarrable)?.sourceBlockIDs.count,
+      firstAutomaticUnitCharacterCount: units.first(where: \.isNarrable)?.text.count,
+      contentClassCounts: Dictionary(grouping: units, by: \.contentClass).mapValues(\.count),
+      decisionRuleCounts: Dictionary(grouping: units.flatMap(\.decisionTrace), by: \.rule)
+        .mapValues(\.count),
       outcomes: outcomes, errors: errors)
   }
 
   private func measureWarmLayout(
-    page: PDFPage, pageIndex: Int, modelURL: URL, id: String
+    page: PDFPage, modelURL: URL, id: String
   ) async -> WarmLayoutMeasurement {
     let sendablePage = SendableCorpusPDFPage(value: page)
     // The first call is deliberately excluded: it loads/caches the model and is not a warm sample.
-    _ = await classifyCorpusPage(
-      sendablePage, pageIndex: pageIndex, rotation: page.rotation, modelURL: modelURL)
+    _ = await classifyCorpusPage(sendablePage, rotation: page.rotation, modelURL: modelURL)
     var samples: [UInt64] = []
     var physicalPageCounts = Set<Int>()
     for _ in 0..<CorpusGate.warmSampleCount {
       let result = await classifyCorpusPage(
-        sendablePage, pageIndex: pageIndex, rotation: page.rotation, modelURL: modelURL)
+        sendablePage, rotation: page.rotation, modelURL: modelURL)
       samples.append(result.elapsedMilliseconds)
       physicalPageCounts.insert(Int(result.physicalPageCount))
     }
@@ -401,10 +473,10 @@ private struct SendableCorpusPDFPage: @unchecked Sendable {
 }
 
 private func classifyCorpusPage(
-  _ page: SendableCorpusPDFPage, pageIndex: Int, rotation: Int, modelURL: URL
+  _ page: SendableCorpusPDFPage, rotation: Int, modelURL: URL
 ) async -> DocumentLayoutResult {
   await DocumentLayoutClassifier.shared.classify(
-    at: page.value, pageIndex: pageIndex, rotation: rotation, modelURL: modelURL)
+    at: page.value, rotation: rotation, modelURL: modelURL)
 }
 
 private struct CorpusManifest: Decodable {
@@ -486,7 +558,9 @@ private enum CorpusGate {
       "ferguson_rotation_or_fallback", "explicit_ocr_source_is_image_only",
     ],
     "wacquant_broken_order": ["expected_reading_order"],
-    "unicef_columns": ["expected_reading_order", "multicolumn_order"],
+    "unicef_columns": [
+      "expected_reading_order", "multicolumn_order", "unsupported_tail_visual_order",
+    ],
     "stockemer_table": ["table_retained_on_demand"],
     "garzon_clean": ["clean_page_preserves_text"],
     "consorcio_toc": ["toc_content_remains"],
@@ -649,9 +723,9 @@ private struct RegionEvidence: Encodable {
 
 private struct CaseEvidence: Encodable {
   let id: String
-  let source: String
+  var source: String
   let sourceSHA256: String?
-  let provenance: CorpusProvenance?
+  var provenance: CorpusProvenance?
   let oneBasedPage: Int
   let zeroBasedPageIndex: Int
   let language: String
@@ -676,6 +750,17 @@ private struct CaseEvidence: Encodable {
   let warmLayoutSamplesMilliseconds: [UInt64]
   let warmLayoutMedianMilliseconds: UInt64
   let warmLayoutPhysicalPageCount: Int
+  let normalizedRoute: String
+  let normalizedReasonCode: String
+  let normalizedStatus: String
+  let normalizationElapsedMilliseconds: UInt64
+  let unitSourceBlockCounts: [Int]
+  let unitCharacterCounts: [Int]
+  let visibleSpokenEqualCount: Int
+  let firstAutomaticUnitSourceBlockCount: Int?
+  let firstAutomaticUnitCharacterCount: Int?
+  let contentClassCounts: [String: Int]
+  let decisionRuleCounts: [String: Int]
   let outcomes: [String: Bool]
   let errors: [String]
 
@@ -697,6 +782,11 @@ private struct CaseEvidence: Encodable {
       rssBytes: 0, fallbackActivated: false, ocrActivated: false, layoutStatus: "unavailable",
       physicalPageCount: 0, warmLayoutSamplesMilliseconds: [],
       warmLayoutMedianMilliseconds: 0, warmLayoutPhysicalPageCount: 0,
+      normalizedRoute: "not_available", normalizedReasonCode: "not_available",
+      normalizedStatus: "not_available", normalizationElapsedMilliseconds: 0,
+      unitSourceBlockCounts: [], unitCharacterCounts: [], visibleSpokenEqualCount: 0,
+      firstAutomaticUnitSourceBlockCount: nil, firstAutomaticUnitCharacterCount: nil,
+      contentClassCounts: [:], decisionRuleCounts: [:],
       outcomes: ["source_available": false], errors: [error])
   }
 }

@@ -30,6 +30,10 @@ final class LocalizationContentTests: XCTestCase {
     "privacy.no_telemetry", "privacy.permissions", "privacy.storage",
   ]
 
+  private static let visibleTextVersion = [
+    "en": "Text", "es": "Texto", "pt": "Texto",
+  ]
+
   /// The title and body of every step of `tutorialSteps` (Stories 5.10 and 6.10). A step whose key
   /// is missing from the catalog does not fail to build: the card shows the raw key, which is only
   /// visible by opening the tutorial in the running app.
@@ -93,6 +97,20 @@ final class LocalizationContentTests: XCTestCase {
     }
   }
 
+  func testVisibleTextVersionControlHasAnUnambiguousLocalizedLabel() throws {
+    let catalog = try Self.catalogStrings()
+    let localizations = try XCTUnwrap(
+      (catalog["translation.text.version"] as? [String: Any])?["localizations"]
+        as? [String: Any])
+
+    for language in Self.languages {
+      let value =
+        ((localizations[language] as? [String: Any])?["stringUnit"]
+        as? [String: Any])?["value"] as? String
+      XCTAssertEqual(value, Self.visibleTextVersion[language], "visible text label: \(language)")
+    }
+  }
+
   /// Story 6.3 AC2: the visible name of the app is a translation per language, the way Preview is
   /// "Vista Previa" in Spanish — not the Spanish name repeated in the other two.
   func testApplicationNameIsLocalizedPerLanguage() throws {
@@ -117,6 +135,28 @@ final class LocalizationContentTests: XCTestCase {
     for language in Self.languages {
       let value = ((title[language] as? [String: Any])?["stringUnit"] as? [String: Any])?["value"]
       XCTAssertEqual(value as? String, expected[language], "app.title: \(language)")
+    }
+  }
+
+  /// The source files can be correct while the Xcode resource phase silently omits them. Inspect
+  /// the sibling app product as the final guard for Finder and the three compiled localizations.
+  func testBuiltApplicationContainsLocalizedNamesAndFinderFlag() throws {
+    let app = Bundle(for: Self.self).bundleURL.deletingLastPathComponent()
+      .appendingPathComponent("LecturaFluida.app")
+    let bundle = try XCTUnwrap(Bundle(url: app), "missing built app at \(app.path)")
+    XCTAssertEqual(bundle.object(forInfoDictionaryKey: "LSHasLocalizedDisplayName") as? Bool, true)
+
+    for language in Self.languages {
+      let url = try XCTUnwrap(
+        bundle.url(
+          forResource: "InfoPlist", withExtension: "strings", subdirectory: nil,
+          localization: language),
+        "missing built \(language).lproj/InfoPlist.strings")
+      let plist = try XCTUnwrap(
+        PropertyListSerialization.propertyList(from: Data(contentsOf: url), format: nil)
+          as? [String: String])
+      XCTAssertEqual(plist["CFBundleDisplayName"], Self.productName[language])
+      XCTAssertEqual(plist["CFBundleName"], Self.productName[language])
     }
   }
 

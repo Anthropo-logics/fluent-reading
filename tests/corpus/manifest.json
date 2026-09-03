@@ -294,8 +294,8 @@
       "id": "long-1000-pages",
       "role": "long_form",
       "file": "documents/long-1000-pages.pdf",
-      "sha256": "4acd91dddd4059fdf1d854eeb168108f465244103c3dd7739763276812c240c9",
-      "byte_size": 279033,
+      "sha256": "b1ac8da4260cd56ed40e0a4560849e926344093b96832f2e14d4bfea806e8a20",
+      "byte_size": 427533,
       "provenance": {
         "source": "scripts/generate-corpus-fixtures.mjs",
         "permission": "owned",

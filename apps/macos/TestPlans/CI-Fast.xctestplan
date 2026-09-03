@@ -30,8 +30,23 @@
       },
       {
         "enabled": true,
+        "key": "LECTURA_STRESS_MODEL_ROOT",
+        "value": "$(LECTURA_STRESS_MODEL_ROOT)"
+      },
+      {
+        "enabled": true,
         "key": "LECTURA_EXTERNAL_VOLUME_DIR",
         "value": "$(LECTURA_EXTERNAL_VOLUME_DIR)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_REAL_RUNTIME_TEST",
+        "value": "$(LECTURA_REAL_RUNTIME_TEST)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_FIRST_PAGE_PERFORMANCE_TEST",
+        "value": "$(LECTURA_FIRST_PAGE_PERFORMANCE_TEST)"
       },
       {
         "enabled": true,
@@ -67,6 +82,36 @@
         "enabled": true,
         "key": "LECTURA_MODEL_ROOT",
         "value": "$(LECTURA_MODEL_ROOT)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_REAL_PDF",
+        "value": "$(LECTURA_REAL_PDF)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_REAL_PDF_CORPUS",
+        "value": "$(LECTURA_REAL_PDF_CORPUS)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_REAL_KOKORO_RUNTIME",
+        "value": "$(LECTURA_REAL_KOKORO_RUNTIME)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_EPIC7_PDF",
+        "value": "$(LECTURA_EPIC7_PDF)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_OCR_RECOVERY_PDF",
+        "value": "$(LECTURA_OCR_RECOVERY_PDF)"
+      },
+      {
+        "enabled": true,
+        "key": "LECTURA_OCR_RECOVERY_EXPECTED_TEXT",
+        "value": "$(LECTURA_OCR_RECOVERY_EXPECTED_TEXT)"
       },
       {
         "enabled": true,

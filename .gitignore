@@ -61,6 +61,9 @@ xcuserdata/
 .cache/
 .cargo-home/
 .rustup-home/
+graphify-out/cache/
+graphify-out/.graphify_python
+graphify-out/.graphify_root
 
 # Local/private product data
 models/local/

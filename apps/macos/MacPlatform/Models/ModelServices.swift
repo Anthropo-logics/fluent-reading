@@ -179,8 +179,62 @@ public struct InstalledModel: Equatable, Sendable {
 }
 
 public enum ModelPackageInstaller {
-  public typealias FetchArtifact = @Sendable (URL) async throws -> URL
+  public typealias FetchArtifact = @Sendable (URL, UInt64) async throws -> URL
   public typealias Progress = @Sendable (ModelInstallationProgress) -> Void
+
+  private struct PackageStamp: Equatable, Sendable {
+    struct File: Equatable, Sendable {
+      let path: String
+      let size: UInt64
+      let modifiedAt: TimeInterval
+      let fileNumber: UInt64
+    }
+
+    let files: [File]
+  }
+
+  actor VerificationSession {
+    private struct Entry: Sendable {
+      let stamp: PackageStamp
+      let model: InstalledModel?
+    }
+
+    private var entries: [String: Entry] = [:]
+    private var runs = 0
+
+    func verifiedPackage(
+      manifestData: Data, packageRoot: URL, manifestURL: URL
+    ) -> InstalledModel? {
+      guard !Task.isCancelled else { return nil }
+      guard let manifest = try? ModelPackageInstaller.decodeManifest(manifestData),
+        packageRoot.isFileURL,
+        let stamp = try? ModelPackageInstaller.packageStamp(
+          packageRoot: packageRoot, manifest: manifest)
+      else { return nil }
+      let manifestHash = SHA256.hash(data: manifestData).map { String(format: "%02x", $0) }.joined()
+      let key =
+        "\(packageRoot.standardizedFileURL.path)|\(manifestURL.standardizedFileURL.path)|\(manifestHash)"
+      if let entry = entries[key], entry.stamp == stamp { return entry.model }
+
+      runs += 1
+      let model = ModelPackageInstaller.verifiedPackage(
+        manifestData: manifestData, packageRoot: packageRoot, manifestURL: manifestURL)
+      guard !Task.isCancelled else { return nil }
+      guard
+        let verifiedStamp = try? ModelPackageInstaller.packageStamp(
+          packageRoot: packageRoot, manifest: manifest), verifiedStamp == stamp
+      else {
+        entries.removeValue(forKey: key)
+        return nil
+      }
+      entries[key] = Entry(stamp: verifiedStamp, model: model)
+      return model
+    }
+
+    func verificationCount() -> Int { runs }
+  }
+
+  private static let verificationSession = VerificationSession()
 
   /// Parejas propósito/runtime exactas admitidas para descarga. Un `purpose` nuevo o un
   /// runtime distinto para uno ya admitido exige extender esta lista explícitamente — nunca
@@ -250,7 +304,10 @@ public enum ModelPackageInstaller {
     var published = false
     defer { if !published { try? fileManager.removeItem(at: staging) } }
 
-    let downloader = fetch ?? secureDownload
+    let downloader: FetchArtifact =
+      fetch ?? { url, sizeBytes in
+        try await secureDownload(url, sizeBytes: sizeBytes)
+      }
     var completed: UInt64 = 0
     do {
       for artifact in manifest.artifacts {
@@ -258,7 +315,7 @@ public enum ModelPackageInstaller {
         let destination = try containedURL(for: artifact.relativePath, root: staging)
         try fileManager.createDirectory(
           at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let temporary = try await downloader(artifact.sourceURL)
+        let temporary = try await downloader(artifact.sourceURL, artifact.sizeBytes)
         defer { try? fileManager.removeItem(at: temporary) }
         let partial = destination.appendingPathExtension("part")
         try fileManager.copyItem(at: temporary, to: partial)
@@ -332,6 +389,13 @@ public enum ModelPackageInstaller {
     }
   }
 
+  public static func sessionVerifiedPackage(
+    manifestData: Data, packageRoot: URL, manifestURL: URL
+  ) async -> InstalledModel? {
+    await verificationSession.verifiedPackage(
+      manifestData: manifestData, packageRoot: packageRoot, manifestURL: manifestURL)
+  }
+
   private static func validate(_ artifact: InstallableModelArtifact, revision: String) throws {
     let path = artifact.relativePath as NSString
     let extensionName = path.pathExtension.lowercased()
@@ -368,6 +432,7 @@ public enum ModelPackageInstaller {
     defer { try? handle.close() }
     var hasher = SHA256()
     while true {
+      try Task.checkCancellation()
       let data = try handle.read(upToCount: 1_048_576) ?? Data()
       if data.isEmpty { break }
       hasher.update(data: data)
@@ -396,9 +461,33 @@ public enum ModelPackageInstaller {
     }
   }
 
-  private static func secureDownload(_ url: URL) async throws -> URL {
-    let delegate = PinnedRedirectDelegate(originURL: url)
-    let configuration = URLSessionConfiguration.ephemeral
+  private static func packageStamp(
+    packageRoot: URL, manifest: InstallableModelManifest
+  ) throws -> PackageStamp {
+    try rejectUnexpectedFiles(in: packageRoot, manifest: manifest)
+    let files = try manifest.artifacts.sorted { $0.relativePath < $1.relativePath }.map {
+      artifact in
+      let url = try containedURL(for: artifact.relativePath, root: packageRoot)
+      let values = try url.resourceValues(forKeys: [
+        .isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey,
+      ])
+      guard values.isRegularFile == true, values.isSymbolicLink != true,
+        let size = values.fileSize, size >= 0, let modifiedAt = values.contentModificationDate
+      else { throw ModelInstallationError.invalidArtifactPath }
+      let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+      let fileNumber = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value ?? 0
+      return PackageStamp.File(
+        path: artifact.relativePath, size: UInt64(size),
+        modifiedAt: modifiedAt.timeIntervalSinceReferenceDate, fileNumber: fileNumber)
+    }
+    return PackageStamp(files: files)
+  }
+
+  static func secureDownload(
+    _ url: URL, sizeBytes: UInt64,
+    configuration: URLSessionConfiguration = .ephemeral
+  ) async throws -> URL {
+    let delegate = BoundedDownloadDelegate(originURL: url, sizeBytes: sizeBytes)
     configuration.httpCookieStorage = nil
     configuration.urlCache = nil
     configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
@@ -407,17 +496,17 @@ public enum ModelPackageInstaller {
     var request = URLRequest(url: url)
     request.httpMethod = "GET"
     request.timeoutInterval = 120
-    let (temporary, response) = try await session.download(for: request)
-    guard let http = response as? HTTPURLResponse, http.statusCode == 200,
-      delegate.acceptsFinalURL(http.url)
-    else { throw ModelInstallationError.downloadFailed }
-    let retained = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-    try FileManager.default.moveItem(at: temporary, to: retained)
-    return retained
+    return try await withTaskCancellationHandler {
+      try await withCheckedThrowingContinuation { continuation in
+        delegate.start(session.dataTask(with: request), continuation: continuation)
+      }
+    } onCancel: {
+      delegate.cancel()
+    }
   }
 }
 
-final class PinnedRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+class PinnedRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
   private let host: String?
   private let revision: String?
 
@@ -440,7 +529,139 @@ final class PinnedRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked
   ) { completionHandler(acceptsFinalURL(request.url) ? request : nil) }
 }
 
+private final class BoundedDownloadDelegate: PinnedRedirectDelegate, URLSessionDataDelegate,
+  @unchecked Sendable
+{
+  private let sizeBytes: UInt64
+  private let temporary = FileManager.default.temporaryDirectory.appendingPathComponent(
+    UUID().uuidString)
+  private let lock = NSLock()
+  private var handle: FileHandle?
+  private var task: URLSessionDataTask?
+  private var continuation: CheckedContinuation<URL, Error>?
+  private var received: UInt64 = 0
+  private var cancelledByCaller = false
+
+  init(originURL: URL, sizeBytes: UInt64) {
+    self.sizeBytes = sizeBytes
+    FileManager.default.createFile(atPath: temporary.path, contents: nil)
+    handle = try? FileHandle(forWritingTo: temporary)
+    super.init(originURL: originURL)
+  }
+
+  func start(_ task: URLSessionDataTask, continuation: CheckedContinuation<URL, Error>) {
+    lock.lock()
+    guard handle != nil else {
+      lock.unlock()
+      try? FileManager.default.removeItem(at: temporary)
+      continuation.resume(throwing: ModelInstallationError.downloadFailed)
+      return
+    }
+    self.task = task
+    self.continuation = continuation
+    let cancelledByCaller = cancelledByCaller
+    lock.unlock()
+    if cancelledByCaller {
+      complete(.failure(CancellationError()))
+    } else {
+      task.resume()
+    }
+  }
+
+  func cancel() {
+    lock.lock()
+    cancelledByCaller = true
+    let task = task
+    lock.unlock()
+    task?.cancel()
+  }
+
+  func urlSession(
+    _ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
+    completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+  ) {
+    guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+      acceptsFinalURL(http.url)
+    else {
+      completionHandler(.cancel)
+      complete(.failure(ModelInstallationError.downloadFailed))
+      return
+    }
+    if response.expectedContentLength >= 0,
+      UInt64(response.expectedContentLength) > sizeBytes
+    {
+      completionHandler(.cancel)
+      complete(.failure(ModelInstallationError.sizeMismatch))
+      return
+    }
+    completionHandler(.allow)
+  }
+
+  func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+    lock.lock()
+    guard continuation != nil else {
+      lock.unlock()
+      return
+    }
+    guard UInt64(data.count) <= sizeBytes - received else {
+      lock.unlock()
+      dataTask.cancel()
+      complete(.failure(ModelInstallationError.sizeMismatch))
+      return
+    }
+    do {
+      try handle?.write(contentsOf: data)
+      received += UInt64(data.count)
+      lock.unlock()
+    } catch {
+      lock.unlock()
+      dataTask.cancel()
+      complete(.failure(ModelInstallationError.downloadFailed))
+    }
+  }
+
+  func urlSession(
+    _ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?
+  ) {
+    lock.lock()
+    let cancelledByCaller = cancelledByCaller
+    lock.unlock()
+    if cancelledByCaller {
+      complete(.failure(CancellationError()))
+    } else if error != nil {
+      complete(.failure(ModelInstallationError.downloadFailed))
+    } else {
+      complete(.success(temporary))
+    }
+  }
+
+  private func complete(_ result: Result<URL, Error>) {
+    lock.lock()
+    guard let continuation else {
+      lock.unlock()
+      return
+    }
+    self.continuation = nil
+    let handle = handle
+    self.handle = nil
+    lock.unlock()
+    try? handle?.close()
+    if case .failure = result { try? FileManager.default.removeItem(at: temporary) }
+    continuation.resume(with: result)
+  }
+}
+
 public enum ModelServices {
+  public static func phoneticDataRoot(
+    engineURL: URL, bundledEngineURL: URL, bundledDataRoot: URL
+  ) -> URL {
+    if engineURL.standardizedFileURL == bundledEngineURL.standardizedFileURL {
+      return bundledDataRoot
+    }
+    return engineURL.deletingLastPathComponent().deletingLastPathComponent()
+      .appendingPathComponent("share", isDirectory: true)
+  }
+
   public static func synthesize(
     _ request: TTSSynthesisRequest,
     runtimeURL: URL,
@@ -514,7 +735,8 @@ public enum ModelServices {
     var segments = [NarrationSegmentResult]()
     for unit in request.units {
       var unitOffset: UInt64 = 0
-      for (segmentIndex, text) in chunks(unit.text).enumerated() {
+      let scalarLimit = request.rawIPA ? 510 : 400
+      for (segmentIndex, text) in chunks(unit.text, limit: scalarLimit).enumerated() {
         let fragmentURL = root.appendingPathComponent(
           "fragment-\(segments.count).wav", isDirectory: false)
         let elapsedMs = try runRuntime(
@@ -672,10 +894,9 @@ public enum ModelServices {
     return ipa.isEmpty ? nil : ipa
   }
 
-  static func chunks(_ text: String) -> [String] {
+  static func chunks(_ text: String, limit: Int = 400) -> [String] {
     let normalized = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     let scalars = Array(normalized.unicodeScalars)
-    let limit = 510
     let strong = CharacterSet(charactersIn: ".?!")
     let medium = CharacterSet(charactersIn: ";:—")
     let comma = CharacterSet(charactersIn: ",")

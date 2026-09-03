@@ -141,7 +141,14 @@ public enum ModelCredits {
   public static func credits(bundle: Bundle = .main, defaults: UserDefaults = .standard)
     -> [ModelCredit]
   {
-    let storageRoot = ModelStorage.resolve(defaults: defaults)?.url
+    let storage = ModelStorage.resolve(defaults: defaults)
+    let scopedAccessStarted =
+      storage?.isSecurityScoped == true
+      && storage?.url.startAccessingSecurityScopedResource() == true
+    defer {
+      if scopedAccessStarted { storage?.url.stopAccessingSecurityScopedResource() }
+    }
+    let storageRoot = storage?.url
     let containerRoot = ModelStorage.containerRoot(storageRoot: storageRoot)
     let bundled = bundle.urls(forResourcesWithExtension: "json", subdirectory: nil) ?? []
     let installed =

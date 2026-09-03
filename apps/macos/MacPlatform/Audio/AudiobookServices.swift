@@ -487,82 +487,182 @@ public enum AudiobookExporter {
   static func readChapterSamples(fromFileAt url: URL) throws -> [(
     title: String, startSeconds: Double
   )] {
-    let data = try Data(contentsOf: url)
-    guard let moov = box(data, "moov", in: 0..<data.count) else { return [] }
-    var i = moov.lowerBound + 8
-    while let trak = box(data, "trak", in: i..<moov.upperBound) {
-      defer { i = trak.upperBound }
-      guard let mdia = box(data, "mdia", in: trak.lowerBound + 8..<trak.upperBound),
-        let hdlr = box(data, "hdlr", in: mdia.lowerBound + 8..<mdia.upperBound),
-        hdlr.lowerBound + 8 + 8 + 4 <= data.count,
-        data[(hdlr.lowerBound + 16)..<(hdlr.lowerBound + 20)].elementsEqual(Array("text".utf8)),
-        let mdhd = box(data, "mdhd", in: mdia.lowerBound + 8..<mdia.upperBound),
-        let minf = box(data, "minf", in: mdia.lowerBound + 8..<mdia.upperBound),
-        let stbl = box(data, "stbl", in: minf.lowerBound + 8..<minf.upperBound),
-        let stts = box(data, "stts", in: stbl.lowerBound + 8..<stbl.upperBound),
-        let stsz = box(data, "stsz", in: stbl.lowerBound + 8..<stbl.upperBound),
-        let stco = box(data, "stco", in: stbl.lowerBound + 8..<stbl.upperBound)
-      else { continue }
-      let timescale = readUInt32BE(data, mdhd.lowerBound + 20)
-      guard timescale > 0 else { return [] }
-      var durations: [(count: Int, delta: Int)] = []
-      let sttsCount = Int(readUInt32BE(data, stts.lowerBound + 12))
-      for entry in 0..<sttsCount {
-        let base = stts.lowerBound + 16 + entry * 8
-        durations.append(
-          (Int(readUInt32BE(data, base)), Int(readUInt32BE(data, base + 4))))
-      }
-      let stszCount = Int(readUInt32BE(data, stsz.lowerBound + 16))
-      var sizes: [Int] = []
-      for entry in 0..<stszCount {
-        sizes.append(Int(readUInt32BE(data, stsz.lowerBound + 20 + entry * 4)))
-      }
-      let chunkOffset = Int(readUInt32BE(data, stco.lowerBound + 16))
-      var results: [(title: String, startSeconds: Double)] = []
-      var cursor = chunkOffset
-      var elapsed = 0
-      var durationIndex = 0
-      var remainingInRun = durations.first?.count ?? 0
-      for size in sizes {
-        guard cursor + size <= data.count, size >= 2 else { break }
-        let textLength = Int(data[cursor]) << 8 | Int(data[cursor + 1])
-        guard size >= 2 + textLength else { break }
-        let title = String(decoding: data[(cursor + 2)..<(cursor + 2 + textLength)], as: UTF8.self)
-        results.append((title, Double(elapsed) / Double(timescale)))
-        cursor += size
-        guard durationIndex < durations.count else { continue }
-        elapsed += durations[durationIndex].delta
-        remainingInRun -= 1
-        if remainingInRun <= 0 {
-          durationIndex += 1
-          remainingInRun = durationIndex < durations.count ? durations[durationIndex].count : 0
+    do {
+      let file = try ChapterFile(url: url)
+      guard let moov = try box(file, "moov", in: 0..<file.size) else { return [] }
+      var offset = moov.payload.lowerBound
+      while let trak = try box(file, "trak", in: offset..<moov.payload.upperBound) {
+        offset = trak.range.upperBound
+        guard let mdia = try box(file, "mdia", in: trak.payload),
+          let hdlr = try box(file, "hdlr", in: mdia.payload),
+          try file.data(in: hdlr.payload, offset: 8, count: 4)
+            .elementsEqual(Array("text".utf8)),
+          let mdhd = try box(file, "mdhd", in: mdia.payload),
+          let minf = try box(file, "minf", in: mdia.payload),
+          let stbl = try box(file, "stbl", in: minf.payload),
+          let stts = try box(file, "stts", in: stbl.payload),
+          let stsz = try box(file, "stsz", in: stbl.payload),
+          let stco = try box(file, "stco", in: stbl.payload)
+        else { continue }
+
+        let mdhdVersion = try file.data(in: mdhd.payload, offset: 0, count: 1)[0]
+        guard mdhdVersion <= 1 else { throw AudiobookExportError.verificationFailed }
+        let timescale = try file.uint32(
+          in: mdhd.payload, offset: mdhdVersion == 1 ? 20 : 12)
+        guard timescale > 0 else { throw AudiobookExportError.verificationFailed }
+
+        let durationCount = UInt64(try file.uint32(in: stts.payload, offset: 4))
+        let sttsBytes = stts.payload.upperBound - stts.payload.lowerBound
+        guard sttsBytes >= 8, durationCount * 8 <= sttsBytes - 8 else {
+          throw AudiobookExportError.verificationFailed
         }
+        let fixedSampleSize = UInt64(try file.uint32(in: stsz.payload, offset: 4))
+        let sampleCount = UInt64(try file.uint32(in: stsz.payload, offset: 8))
+        let stszBytes = stsz.payload.upperBound - stsz.payload.lowerBound
+        guard sampleCount <= 100_000,
+          stszBytes >= 12, fixedSampleSize > 0 || sampleCount * 4 <= stszBytes - 12
+        else { throw AudiobookExportError.verificationFailed }
+        let chunkCount = try file.uint32(in: stco.payload, offset: 4)
+        guard chunkCount == 1 else { throw AudiobookExportError.verificationFailed }
+        let chunkOffset = UInt64(try file.uint32(in: stco.payload, offset: 8))
+
+        var durationSamples: UInt64 = 0
+        for entry in 0..<durationCount {
+          let count = UInt64(try file.uint32(in: stts.payload, offset: 8 + entry * 8))
+          guard count > 0, durationSamples <= UInt64.max - count else {
+            throw AudiobookExportError.verificationFailed
+          }
+          durationSamples += count
+        }
+        guard durationSamples == sampleCount else {
+          throw AudiobookExportError.verificationFailed
+        }
+
+        var results: [(title: String, startSeconds: Double)] = []
+        var cursor = chunkOffset
+        var elapsed: UInt64 = 0
+        var durationIndex: UInt64 = 0
+        var remainingInRun: UInt64 = 0
+        var delta: UInt64 = 0
+        for sample in 0..<sampleCount {
+          if remainingInRun == 0 {
+            guard durationIndex < durationCount else {
+              throw AudiobookExportError.verificationFailed
+            }
+            remainingInRun = UInt64(
+              try file.uint32(in: stts.payload, offset: 8 + durationIndex * 8))
+            delta = UInt64(
+              try file.uint32(in: stts.payload, offset: 12 + durationIndex * 8))
+            durationIndex += 1
+          }
+          let size =
+            fixedSampleSize > 0
+            ? fixedSampleSize
+            : UInt64(try file.uint32(in: stsz.payload, offset: 12 + sample * 4))
+          guard cursor <= file.size, size >= 2, size <= file.size - cursor else {
+            throw AudiobookExportError.verificationFailed
+          }
+          let prefix = try file.data(at: cursor, count: 2)
+          let textLength = UInt64(prefix[0]) << 8 | UInt64(prefix[1])
+          guard textLength <= size - 2 else { throw AudiobookExportError.verificationFailed }
+          let text = try file.data(at: cursor + 2, count: Int(textLength))
+          guard let title = String(data: text, encoding: .utf8), elapsed <= UInt64.max - delta
+          else {
+            throw AudiobookExportError.verificationFailed
+          }
+          results.append((title, Double(elapsed) / Double(timescale)))
+          cursor += size
+          elapsed += delta
+          remainingInRun -= 1
+        }
+        return results
       }
-      return results
+      return []
+    } catch let error as AudiobookExportError {
+      throw error
+    } catch {
+      throw AudiobookExportError.verificationFailed
     }
-    return []
   }
 
-  private static func box(_ data: Data, _ fourCC: String, in range: Range<Int>) -> Range<Int>? {
+  private struct ISOBox {
+    let range: Range<UInt64>
+    let payload: Range<UInt64>
+  }
+
+  private final class ChapterFile {
+    let size: UInt64
+    private let handle: FileHandle
+
+    init(url: URL) throws {
+      handle = try FileHandle(forReadingFrom: url)
+      size = try handle.seekToEnd()
+    }
+
+    deinit { try? handle.close() }
+
+    func data(at offset: UInt64, count: Int) throws -> Data {
+      guard count >= 0, offset <= size, UInt64(count) <= size - offset else {
+        throw AudiobookExportError.verificationFailed
+      }
+      try handle.seek(toOffset: offset)
+      let data = try handle.read(upToCount: count) ?? Data()
+      guard data.count == count else { throw AudiobookExportError.verificationFailed }
+      return data
+    }
+
+    func data(in range: Range<UInt64>, offset: UInt64, count: Int) throws -> Data {
+      let rangeSize = range.upperBound - range.lowerBound
+      guard range.upperBound <= size, offset <= rangeSize, count >= 0,
+        UInt64(count) <= rangeSize - offset
+      else { throw AudiobookExportError.verificationFailed }
+      return try data(at: range.lowerBound + offset, count: count)
+    }
+
+    func uint32(in range: Range<UInt64>, offset: UInt64) throws -> UInt32 {
+      let data = try data(in: range, offset: offset, count: 4)
+      return UInt32(data[0]) << 24 | UInt32(data[1]) << 16 | UInt32(data[2]) << 8
+        | UInt32(data[3])
+    }
+  }
+
+  private static func box(
+    _ file: ChapterFile, _ fourCC: String, in range: Range<UInt64>
+  ) throws -> ISOBox? {
+    guard range.upperBound <= file.size else { throw AudiobookExportError.verificationFailed }
     let target = Array(fourCC.utf8)
-    var i = range.lowerBound
-    while i + 8 <= range.upperBound {
-      var size = Int(readUInt32BE(data, i))
-      if size == 1 {
-        guard i + 16 <= range.upperBound else { return nil }
-        size = Int(
-          UInt64(readUInt32BE(data, i + 8)) << 32 | UInt64(readUInt32BE(data, i + 12)))
+    var offset = range.lowerBound
+    while range.upperBound - offset >= 8 {
+      let header = try file.data(at: offset, count: 8)
+      let size32 =
+        UInt32(header[0]) << 24 | UInt32(header[1]) << 16 | UInt32(header[2]) << 8
+        | UInt32(header[3])
+      var headerSize: UInt64 = 8
+      let size: UInt64
+      if size32 == 0 {
+        size = range.upperBound - offset
+      } else if size32 == 1 {
+        guard range.upperBound - offset >= 16 else {
+          throw AudiobookExportError.verificationFailed
+        }
+        let extended = try file.data(at: offset + 8, count: 8)
+        size = extended.reduce(0) { ($0 << 8) | UInt64($1) }
+        headerSize = 16
+      } else {
+        size = UInt64(size32)
       }
-      guard size >= 8, i + size <= range.upperBound else { return nil }
-      if data[(i + 4)..<(i + 8)].elementsEqual(target) { return i..<(i + size) }
-      i += size
+      guard size >= headerSize, size <= range.upperBound - offset else {
+        throw AudiobookExportError.verificationFailed
+      }
+      let upperBound = offset + size
+      if header[4..<8].elementsEqual(target) {
+        return ISOBox(
+          range: offset..<upperBound, payload: (offset + headerSize)..<upperBound)
+      }
+      offset = upperBound
     }
+    guard offset == range.upperBound else { throw AudiobookExportError.verificationFailed }
     return nil
-  }
-
-  private static func readUInt32BE(_ data: Data, _ offset: Int) -> UInt32 {
-    UInt32(data[offset]) << 24 | UInt32(data[offset + 1]) << 16 | UInt32(data[offset + 2]) << 8
-      | UInt32(data[offset + 3])
   }
 
   /// Classic QuickTime `TextDescription` sample entry for a plain, unstyled chapter text

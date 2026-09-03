@@ -62,6 +62,41 @@ final class TutorialCalloutTests: XCTestCase {
       "pointer at \(pointsAt) misses the control at \(target.minX)…\(target.maxX)")
   }
 
+  func testToolbarTargetAgainstTheLeadingEdgeKeepsThePointerOnTarget() {
+    let target = CGRect(x: 0, y: -38, width: 28, height: 28)
+    let placement = TutorialCallout.placement(target: target, cardSize: card, overlaySize: overlay)
+
+    assertInside(placement, overlay)
+    guard case .above(let tipX) = placement.tip else {
+      return XCTFail("expected a pointer on the top edge, got \(placement.tip)")
+    }
+    let pointsAt = placement.cardFrame.minX + tipX
+    XCTAssertTrue(
+      (target.minX...target.maxX).contains(pointsAt),
+      "pointer at \(pointsAt) misses the control at \(target.minX)…\(target.maxX)")
+  }
+
+  func testTallTargetsUseAVisibleSidePointerAndKeepTheCardInside() {
+    let targets = [
+      CGRect(x: -50, y: 0, width: 30, height: overlay.height),
+      CGRect(x: overlay.width + 20, y: 0, width: 30, height: overlay.height),
+    ]
+
+    for (index, target) in targets.enumerated() {
+      let placement = TutorialCallout.placement(
+        target: target, cardSize: card, overlaySize: overlay)
+      assertInside(placement, overlay)
+      let tipY: CGFloat
+      switch placement.tip {
+      case .leading(let y) where index == 0: tipY = y
+      case .trailing(let y) where index == 1: tipY = y
+      default:
+        return XCTFail("expected a side pointer for target \(target), got \(placement.tip)")
+      }
+      XCTAssertEqual(placement.cardFrame.minY + tipY, target.midY, accuracy: 0.001)
+    }
+  }
+
   /// AC5, the other half: the card is adjacent to the control, never on top of it.
   func testCardNeverOverlapsAControlItCanStandBeside() {
     let targets = [

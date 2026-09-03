@@ -82,6 +82,15 @@ public enum TranslationServiceError: Error, Equatable, Sendable {
 /// `mlx-swift-lm`/`lectura-translate-runtime`) is wired here — production candidate selection
 /// happens at Task 7's verdict, not in this adapter.
 public enum TranslationServices {
+  /// Pure presentation projection: only a confirmed translation may replace the source text.
+  /// Choosing Original never removes the confirmed result, so choosing Translation again is free.
+  public static func visibleText(
+    source: String, status: TranslationUnitStatus?, showingOriginal: Bool
+  ) -> String {
+    guard !showingOriginal, case .translated(let translated) = status else { return source }
+    return translated
+  }
+
   /// AC6 (Story 5.4): complex/degraded content must keep its classification rather than being
   /// silently turned into "reliable translated prose" — same `["prose","note"]`/`>= 0.7` threshold
   /// already used by `exportDegradedUnits`/`exportNonNarrableUnits` for narration/export.
